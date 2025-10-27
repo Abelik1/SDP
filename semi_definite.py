@@ -98,6 +98,23 @@ def gibbs_state(H, beta):
     # Numerical symmetrization
     return (G + dagger(G))/2.0
 
+def choi_identity(d):
+    """Create Choi representation of identity channel."""
+    v = np.eye(d).reshape(-1, 1, order='F')  # vec(I) in column-major
+    return v @ v.conj().T
+
+def local_gp_A(rho, lam, gammaA, dA, dAp):
+    """Apply local GP replacer on A subsystem."""
+    rho_Ap = partial_trace(rho, (dA, dAp), keep=[1])
+    out = (1 - lam) * rho + lam * np.kron(gammaA, rho_Ap)
+    return 0.5 * (out + out.conj().T)
+
+def local_gp_Ap(rho, lam, gammaAp, dA, dAp):
+    """Apply local GP replacer on A' subsystem."""
+    rho_A = partial_trace(rho, (dA, dAp), keep=[0])
+    out = (1 - lam) * rho + lam * np.kron(rho_A, gammaAp)
+    return 0.5 * (out + out.conj().T)
+
 # ---------- Mutual information ----------
 def mutual_information(rho, dims, tol=1e-12):
     # dims = [dA, dAp]
@@ -173,10 +190,28 @@ def monotones(tau, gammaA, gammaAp, dims, H_A=None, H_Ap=None, tol=1e-12):
     return D_tau, I_tau, C_tauA, C_tauAp
 
 # ---------- SDP: Global GP feasibility ----------
-def check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol=1e-7, verbose=False):
+def check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol=1e-7, verbose=False, eps_eq=1e-8):
     dA, dAp = dims
     d_in  = dA*dAp
     d_out = dA*dAp
+    
+    # Identity sanity check
+    if norm(tau - tau_p, 'fro') <= 1e-10:
+        return True, "identity_case"
+
+    # Solver selection with fallbacks
+    solver_actual = solver
+    if solver.upper() == 'AUTO':
+        for s in ['MOSEK', 'COSMO', 'SCS']:
+            if s in cp.installed_solvers():
+                solver_actual = s
+                break
+    
+    if verbose:
+        print(f"Global GP using solver: {solver_actual}")
+
+    scs_kwargs = {"eps": tol, "max_iters": 200000, "alpha": 1.5, "scale": 5.0, 
+                  "normalize": True, "use_indirect": False, "verbose": verbose} if solver_actual.upper() == "SCS" else {}
 
     J = cp.Variable((d_out*d_in, d_out*d_in), complex=True, name='J')  # Choi of global channel G: in=AA', out=AA'
 
@@ -219,7 +254,7 @@ def check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', to
                 block = J[i::din, j::din]  # picks rows/cols stepping by din -> shape (d, d)
                 acc += XT[i, j] * block
             blocks.append(acc)
-        # sum over i==j already in acc concatenation: now sum these blocks (they’re all dxd matrices added)
+        # sum over i==j already in acc concatenation: now sum these blocks (they're all dxd matrices added)
         Y = 0
         for b in blocks:
             Y += b
@@ -231,26 +266,53 @@ def check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', to
     # Trace-preserving:
     constraints += choi_TP_constraints(J)
 
-    # Global GP: G(γ⊗γ) = γ⊗γ
-    GAxGAp_mat = GAxGAp
+    # Global GP: G(γ⊗γ) = γ⊗γ (relaxed equality)
+    GAxGAp_mat = 0.5 * (GAxGAp + GAxGAp.conj().T)
     Y_gp = choi_apply(J, GAxGAp_mat)
-    constraints += [cp.norm(Y_gp  - GAxGAp_mat, 'fro') <= 1e-8]
+    constraints += [cp.norm(Y_gp - GAxGAp_mat, 'fro') <= eps_eq]
 
-    # Conversion: G(tau) = tau'
-    Y_conv = choi_apply(J, tau)
-    constraints += [cp.norm(Y_conv - tau_p,      'fro') <= 1e-8]
+    # Conversion: G(tau) = tau' (relaxed equality)
+    tau_clean = 0.5 * (tau + tau.conj().T)
+    tau_p_clean = 0.5 * (tau_p + tau_p.conj().T)
+    Y_conv = choi_apply(J, tau_clean)
+    constraints += [cp.norm(Y_conv - tau_p_clean, 'fro') <= eps_eq]
 
     prob = cp.Problem(cp.Minimize(0), constraints)
-    res  = prob.solve(solver=solver, verbose=verbose, eps=tol) if solver.upper()=='SCS' else prob.solve(solver=solver, verbose=verbose)
+    
+    try:
+        res = prob.solve(solver=solver_actual, **scs_kwargs)
+    except Exception as e:
+        if verbose:
+            print(f"Global GP solver error: {e}")
+        return False, f"error: {str(e)}"
+    
     feasible = (prob.status in ['optimal', 'optimal_inaccurate', 'infeasible_inaccurate']) and (prob.status != 'infeasible')
+    if verbose:
+        print(f"Global GP status: {prob.status}, feasible: {feasible}")
     return feasible, prob.status
 
 # ---------- SDP: Local GP (two-step) feasibility ----------
 def check_local_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol=1e-7,
-                            verbose=False, omega_hint=None):
+                            verbose=False, omega_hint=None, eps_eq=1e-6):
     dA, dAp = dims
-    eps_eq = 1e-6
-    scs_kwargs = {"eps": tol, "max_iters": 200000, "verbose": verbose} if solver.upper() == "SCS" else {}
+    
+    # Identity sanity check
+    if norm(tau - tau_p, 'fro') <= 1e-10:
+        return True, "identity_case"
+    
+    # Solver selection with fallbacks
+    solver_actual = solver
+    if solver.upper() == 'AUTO':
+        for s in ['MOSEK', 'COSMO', 'SCS']:
+            if s in cp.installed_solvers():
+                solver_actual = s
+                break
+    
+    if verbose:
+        print(f"LGP using solver: {solver_actual}")
+    
+    scs_kwargs = {"eps": tol, "max_iters": 200000, "alpha": 1.5, "scale": 5.0, 
+                  "normalize": True, "use_indirect": False, "verbose": verbose} if solver_actual.upper() == "SCS" else {}
 
     def choi_apply_local(J, X_const, d):
         XT = X_const.T
@@ -267,6 +329,12 @@ def check_local_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol
     JA   = cp.Variable((dA*dA, dA*dA), complex=True, name='J_A')
     omega = cp.Variable((dA*dAp, dA*dAp), complex=True, name='omega')
     I_A = np.eye(dA)
+
+    # Warm start J_A
+    try:
+        JA.value = choi_identity(dA)
+    except:
+        pass
 
     cons1 = [JA >> 0]
     # Tr_out J_A = I_A
@@ -294,22 +362,38 @@ def check_local_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol
             omega_expr += cp.kron(GA_Eij, Tij)
     cons1 += [omega >> 0, cp.trace(omega) == 1, omega == omega_expr]
 
-    # >>> use the provided intermediate if we have it
+    # Objective based on omega_hint
     if omega_hint is not None:
-        obj1 = cp.Minimize(cp.norm(omega - omega_hint, 'fro'))
+        omega_target = 0.5 * (omega_hint + omega_hint.conj().T)
+        obj1 = cp.Minimize(cp.norm(omega - omega_target, 'fro'))
     else:
-        obj1 = cp.Minimize(cp.norm(omega - tau, 'fro'))  # fallback bias
+        tau_target = 0.5 * (tau + tau.conj().T)
+        obj1 = cp.Minimize(cp.norm(omega - tau_target, 'fro'))
 
     prob1 = cp.Problem(obj1, cons1)
-    _ = prob1.solve(solver=solver, **scs_kwargs)
+    try:
+        _ = prob1.solve(solver=solver_actual, **scs_kwargs)
+    except Exception as e:
+        if verbose:
+            print(f"Step 1 solver error: {e}")
+        return False, f"LGP step-1 error: {str(e)}"
+    
     if prob1.status not in ['optimal', 'optimal_inaccurate']:
-        return False, f"LGP step-1 infeasible ({prob1.status})"
+        if verbose:
+            print(f"Step 1 status: {prob1.status}")
+        return False, f"LGP step-1 {prob1.status}"
 
     omega_val = 0.5 * (omega.value + omega.value.conj().T)
 
     # ---------- STEP 2 (min residual) ----------
     JAp  = cp.Variable((dAp*dAp, dAp*dAp), complex=True, name='J_Ap')
     I_Ap = np.eye(dAp)
+
+    # Warm start J_Ap
+    try:
+        JAp.value = choi_identity(dAp)
+    except:
+        pass
 
     cons2 = [JAp >> 0]
     rows = []
@@ -329,18 +413,33 @@ def check_local_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver='SCS', tol
     for a in range(dAp):
         for b in range(dAp):
             Eab    = np.zeros((dAp, dAp), dtype=complex); Eab[a, b] = 1.0
-            GA_Eab = choi_apply_local(JAp, Eab, dAp)
-            Xab    = omega_blocks[:, a, :, b]
-            tau_p_expr += cp.kron(Xab, GA_Eab)
+            GAp_Eab = choi_apply_local(JAp, Eab, dAp)
+            Xab     = omega_blocks[:, a, :, b]
+            tau_p_expr += cp.kron(Xab, GAp_Eab)
 
-    obj2 = cp.Minimize(cp.norm(tau_p_expr - tau_p, 'fro'))
+    tau_p_target = 0.5 * (tau_p + tau_p.conj().T)
+    obj2 = cp.Minimize(cp.norm(tau_p_expr - tau_p_target, 'fro'))
     prob2 = cp.Problem(obj2, cons2)
-    _ = prob2.solve(solver=solver, **scs_kwargs)
+    
+    try:
+        _ = prob2.solve(solver=solver_actual, **scs_kwargs)
+    except Exception as e:
+        if verbose:
+            print(f"Step 2 solver error: {e}")
+        return False, f"LGP step-2 error: {str(e)}"
+    
     if prob2.status not in ['optimal', 'optimal_inaccurate']:
-        return False, f"LGP step-2 infeasible ({prob2.status})"
+        if verbose:
+            print(f"Step 2 status: {prob2.status}")
+        return False, f"LGP step-2 {prob2.status}"
 
     res = prob2.value if prob2.value is not None else np.inf
-    return (res <= eps_eq), (f"optimal_residual={res:.3e}" if res is not None else "optimal")
+    feasible = (res <= eps_eq)
+    
+    if verbose:
+        print(f"LGP residual: {res:.3e}, threshold: {eps_eq}")
+    
+    return feasible, (f"residual={res:.3e}" if res is not None else "optimal")
 # ---------- Main driver ----------
 def analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, solver='SCS', tol=1e-7, verbose=False, **kwargs):
     """
@@ -363,13 +462,16 @@ def analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, solver='SCS', tol=1e-7, 
     D_tau,  I_tau,  C_A,  C_Ap  = monotones(tau,   gammaA, gammaAp, dims, H_A, H_Ap)
     D_taup, I_taup, C2_A, C2_Ap = monotones(tau_p, gammaA, gammaAp, dims, H_A, H_Ap)
 
-    # Global GP SDP
-    gp_feas, gp_status = check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, solver=solver, tol=tol, verbose=verbose)
+    # Global GP SDP  
+    gp_eps_eq = kwargs.pop('eps_eq', 1e-8)  # Default 1e-8 for global GP
+    gp_feas, gp_status = check_global_gp_feasible(tau, tau_p, gammaA, gammaAp, dims, 
+                                                   solver=solver, tol=tol, verbose=verbose, eps_eq=gp_eps_eq)
 
     # Local GP SDP
+    lgp_eps_eq = kwargs.get('eps_eq', 1e-6)  # Default 1e-6 for local GP, can be overridden
     lgp_feas, lgp_status = check_local_gp_feasible(tau, tau_p, gammaA, gammaAp, dims,
                                                    solver=solver, tol=tol, verbose=verbose,
-                                                   **kwargs)
+                                                   eps_eq=lgp_eps_eq, **kwargs)
 
     report = {
         "dims": dims,
@@ -394,77 +496,100 @@ def analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, solver='SCS', tol=1e-7, 
     }
     return report
 
-# ---------- Example (commented) ----------
+# ---------- Main execution and Tests ----------
 if __name__ == "__main__":
-    # Small demo (2x2) with arbitrary numbers; replace with your actual inputs.
+    # ===== CONFIGURATION VARIABLES =====
+    # Change these values to test different scenarios
+    SEED = 42                    # Random seed for reproducibility
+    SOLVER = 'MOSEK'            # Solver: 'MOSEK', 'COSMO', 'SCS', or 'AUTO'
+    TOL = 1e-8                  # Solver tolerance
+    EPS_EQ = 1e-6               # Equality constraint tolerance
+    BETA = 1.0                  # Inverse temperature
+    TEST_CASE = 'all'           # Test case: 'T0', 'T1', 'T2', or 'all'
+    VERBOSE = False             # Verbose output
+    
+    # ===== SETUP =====
+    # Set seed
+    np.random.seed(SEED)
+    
+    # System dimensions
     dA = dAp = 2
     H_A  = np.diag([0.0, 1.0])
     H_Ap = np.diag([0.0, 1.5])
-    beta = 1.0
+    beta = BETA
 
-    # random valid density matrices for demo:
     def rand_state(d):
         X = np.random.randn(d,d) + 1j*np.random.randn(d,d)
         rho = X @ dagger(X)
         return rho / np.trace(rho)
-    # gammaA  = gibbs_state(H_A,  beta)
-    # gammaAp = gibbs_state(H_Ap, beta)
-    #Normal
-    # tau   = rand_state(dA*dAp)
-    # tau_p = rand_state(dA*dAp)
-    #test 1
-    # tau   = rand_state(dA*dAp)
-    # tau_p = tau.copy()
-
-    #Test 2
-    # tau   = rand_state(dA*dAp)
-    # lam = 0.3  # try 0.3, 0.6, or 1.0
-    # GAxGAp = np.kron(gammaA, gammaAp)
-    # tau_p = (1 - lam) * tau + lam * GAxGAp
-    # tau_p = 0.5 * (tau_p + tau_p.conj().T)  # clean symmetry
-    # tau_p = tau_p / np.trace(tau_p)         # re-normalize just in case of tiny drift
-    
-    # #Test 3
-    # lamA, lamAp = 0.4, 0.5  # any values in [0,1]
-    # GAx = (1 - lamA) * np.eye(gammaA.shape[0])  # not used directly, just naming
-    # # Expand linearly:
-    # GAxGAp = np.kron(gammaA, gammaAp)
-    # tau_A_gamma = np.kron(gammaA, np.eye(gammaAp.shape[0]))  # we'll combine via vec trick below
-
-    # # Easiest: use superoperator idea (already in your code) to apply locals explicitly:
-    # def local_mix_A(rho, lam, gamma, dA, dAp):
-    #     return (1 - lam) * rho + lam * np.kron(gamma, np.eye(dAp))
-
-    # def local_mix_Ap(rho, lam, gamma, dA, dAp):
-    #     return (1 - lam) * rho + lam * np.kron(np.eye(dA), gamma)
-
-    # tau1  = local_mix_A(tau,   lamA,  gammaA,  dA, dAp)
-    # tau_p = local_mix_Ap(tau1, lamAp, gammaAp, dA, dAp)
-
-    #TEst 4
-    def local_gp_A(rho, lam, gammaA, dA, dAp):
-        # (G_A ⊗ id)(rho) with G_A a GP replacer channel
-        rho_Ap = partial_trace(rho, (dA, dAp), keep=[1])
-        out = (1 - lam) * rho + lam * np.kron(gammaA, rho_Ap)
-        # tiny symmetrization for numerics
-        return 0.5 * (out + out.conj().T)
-
-    def local_gp_Ap(rho, lam, gammaAp, dA, dAp):
-        # (id ⊗ G_A')(rho) with G_A' a GP replacer channel
-        rho_A = partial_trace(rho, (dA, dAp), keep=[0])
-        out = (1 - lam) * rho + lam * np.kron(rho_A, gammaAp)
-        return 0.5 * (out + out.conj().T)
 
     gammaA  = gibbs_state(H_A,  beta)
     gammaAp = gibbs_state(H_Ap, beta)
+    
+    # ===== TEST FUNCTIONS =====
+    def run_test_t0():
+        """Test T0: Identity Case"""
+        print("\n=== Test T0: Identity Case ===")
+        tau = rand_state(dA*dAp)
+        tau_p = tau.copy()
+        
+        report = analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, 
+                                        solver=SOLVER, tol=TOL, 
+                                        eps_eq=EPS_EQ, verbose=VERBOSE)
+        
+        print(f"Global GP: {report['feasibility']['Global_GP']}")
+        print(f"Local GP:  {report['feasibility']['Local_GP']}")
+        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> {report['monotones']['D_taup_vs_gamma']:.4f}")
+        print(f"I: {report['monotones']['I_tau']:.4f} -> {report['monotones']['I_taup']:.4f}")
+        return report
 
-    tau   = rand_state(dA*dAp)
-    lamA, lamAp = 0.4, 0.5
+    def run_test_t1():
+        """Test T1: Global Thermal Mix"""
+        print("\n=== Test T1: Global Thermal Mix ===")
+        tau = rand_state(dA*dAp)
+        lam = 0.3
+        GAxGAp = np.kron(gammaA, gammaAp)
+        tau_p = (1 - lam) * tau + lam * GAxGAp
+        tau_p = 0.5 * (tau_p + tau_p.conj().T)
+        
+        report = analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, 
+                                        solver=SOLVER, tol=TOL, 
+                                        eps_eq=EPS_EQ, verbose=VERBOSE)
+        
+        print(f"Global GP: {report['feasibility']['Global_GP']}")
+        print(f"Local GP:  {report['feasibility']['Local_GP']}")
+        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> {report['monotones']['D_taup_vs_gamma']:.4f}")
+        print(f"I: {report['monotones']['I_tau']:.4f} -> {report['monotones']['I_taup']:.4f}")
+        return report
 
-    tau1  = local_gp_A(tau,   lamA,  gammaA,  dA, dAp)
-    tau_p = local_gp_Ap(tau1, lamAp, gammaAp, dA, dAp)
+    def run_test_t2():
+        """Test T2: Guaranteed LGP (with omega_hint)"""
+        print("\n=== Test T2: Guaranteed LGP (with omega_hint) ===")
+        tau = rand_state(dA*dAp)
+        lamA, lamAp = 0.4, 0.5
+        
+        tau1  = local_gp_A(tau, lamA, gammaA, dA, dAp)
+        tau_p = local_gp_Ap(tau1, lamAp, gammaAp, dA, dAp)
+        
+        report = analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, 
+                                        solver=SOLVER, tol=TOL, 
+                                        eps_eq=EPS_EQ, omega_hint=tau1,
+                                        verbose=VERBOSE)
+        
+        print(f"Global GP: {report['feasibility']['Global_GP']}")
+        print(f"Local GP:  {report['feasibility']['Local_GP']}")
+        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> {report['monotones']['D_taup_vs_gamma']:.4f}")
+        print(f"I: {report['monotones']['I_tau']:.4f} -> {report['monotones']['I_taup']:.4f}")
+        return report
 
-    # ------------------
-    report = analyze_convertibility(H_A, H_Ap, beta, tau, tau_p, solver='MOSEK', tol=1e-8, verbose=False, omega_hint=tau1)
-    from pprint import pprint
-    pprint(report)
+    # ===== RUN TESTS =====
+    if TEST_CASE in ['T0', 'all']:
+        run_test_t0()
+    
+    if TEST_CASE in ['T1', 'all']:
+        run_test_t1()
+    
+    if TEST_CASE in ['T2', 'all']:
+        run_test_t2()
+    
+    print("\nTests complete!")
