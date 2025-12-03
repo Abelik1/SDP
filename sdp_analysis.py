@@ -407,3 +407,56 @@ class LTAnalyzer:
         )
 
         return {"tfd": rep_tfd, "tfd_dephased": rep_deph}
+    def sample_extremal_lt_states(
+        self,
+        num_samples=20,
+        classical=False,
+        solver=None,
+        tol=None,
+        verbose=False,
+    ):
+        """
+        Sample extremal LT (or classical LT) states by maximising Tr(K rho)
+        over the LT set using extremal_lt_state(K, classical=...).
+
+        Returns a list of dicts with rho, K, status, and monotones.
+        """
+        dA, dAp = self.system.dims
+        d = dA * dAp
+
+        def random_Hermitian():
+            X = np.random.randn(d, d) + 1j * np.random.randn(d, d)
+            H = X + dagger(X)
+            return 0.5 * H  # ensure Hermitian
+
+        extremals = []
+        for _ in range(num_samples):
+            K = random_Hermitian()
+            rho_ext, opt_val, status = self.system.extremal_lt_state(
+                K,
+                classical=classical,
+                solver=solver,
+                tol=tol,
+                verbose=verbose,
+            )
+            if rho_ext is None:
+                continue
+
+            D_rho, I_rho, C_A, C_Ap = self.system.monotones(rho_ext)
+
+            extremals.append(
+                {
+                    "rho": rho_ext,
+                    "K": K,
+                    "opt_val": opt_val,
+                    "status": status,
+                    "monotones": {
+                        "D_rho_vs_gamma": D_rho,
+                        "I_rho": I_rho,
+                        "C_A": C_A,
+                        "C_Ap": C_Ap,
+                    },
+                }
+            )
+
+        return extremals
