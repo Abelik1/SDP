@@ -126,7 +126,7 @@ def main():
         eq_name = config.get("selected_equation_name")
         vars_str = config.get("variables", "")
         custom_func_text = config.get("custom_function", "")
-
+        variables_str = config.get("variables_str", config.get("variables", ""))
         print("\n[backend_run] Selected equation:", eq_id, f"({eq_name})")
         print("[backend_run] Variables string:", vars_str)
         print("[backend_run] Custom text length:", len(custom_func_text))

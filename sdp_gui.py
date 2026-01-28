@@ -1,320 +1,419 @@
-# sdp_gui.py
-#
-# PyQt5 GUI for selecting equations and configuring SDP runs.
-# You can import LTSDPWindow and launch_gui(run_callback) from main.py.
 
-from PyQt5 import QtWidgets, QtCore
+"""
+sdp_gui.py — Revamped UI for LT / GP SDP Experiments
+
+Goals:
+- Clean, structured UX: no "mystery" free-text variables required.
+- Fixed parameter widgets (spinboxes, checkboxes, dropdowns).
+- Custom SDP input supported as JSON (shown with examples + validation).
+- Backwards compatible: still emits `variables_str` in key=value CSV format
+  so existing backend code using `parse_variables_string` keeps working.
+
+Expected config keys produced on Run:
+  - selected_equation_id: str
+  - module_type: str
+  - variables_str: str   (e.g. "beta=1.0, num_samples=30, symmetric=1")
+  - custom_function: str (JSON text; may be empty if not in Custom mode)
+
+If your backend expects additional keys, add them in `_build_config()`.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, Any, Optional
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget,
+    QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QPushButton, QComboBox, QLineEdit,
+    QDoubleSpinBox, QSpinBox, QCheckBox,
+    QGroupBox, QTextEdit, QSplitter, QMessageBox,
+    QSizePolicy
+)
+
+import json
 
 
-class LTSDPWindow(QtWidgets.QMainWindow):
+# -------------------------
+# Helpers
+# -------------------------
+
+def _kv(key: str, value: Any) -> str:
+    """Serialize key=value for the legacy variables_str channel."""
+    if isinstance(value, bool):
+        return f"{key}={1 if value else 0}"
+    return f"{key}={value}"
+
+def _pretty_json_default() -> str:
+    example = {
+        "task": "convertibility",
+        "tau": "tfd",
+        "tau_p": "dephase_global(tau)",
+        "check_global": True,
+        "check_local": True,
+        "eps_eq_global": 1e-8,
+        "eps_eq_local": 1e-6
+    }
+    return json.dumps(example, indent=2)
+
+@dataclass
+class EquationItem:
+    eq_id: str
+    title: str
+    description: str
+
+
+# -------------------------
+# Main Window
+# -------------------------
+
+class LTSDPWindow(QMainWindow):
     """
-    Main window for LT/SDP front-end.
-
-    Parameters
-    ----------
-    run_callback : callable or None
-        Function called when "Run" is pressed.
-        Signature: run_callback(config: dict)
-        where config includes:
-          - "selected_equation_id"
-          - "selected_equation_name"
-          - "module_type"
-          - "variables"
-          - "custom_function"
+    A clean UI that:
+    - lets you pick a preset experiment (Equation)
+    - choose module type / algorithm mode
+    - set parameters via widgets
+    - (optionally) provide Custom JSON spec
     """
 
-    def __init__(self, run_callback=None, parent=None):
+    def __init__(self, run_callback, equations: Optional[list[EquationItem]] = None, parent=None):
         super().__init__(parent)
         self.run_callback = run_callback
+        self.setWindowTitle("LT / GP SDP — Experiments")
+        self.resize(1100, 720)
 
-        self.setWindowTitle("LT / SDP Explorer")
-        self.resize(900, 600)
+        self.equations = equations or self._default_equations()
 
-        self._init_equation_data()
-        self._build_ui()
-        self._connect_signals()
+        root = QWidget()
+        self.setCentralWidget(root)
 
-    # ---------- Equation data ----------
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(14, 14, 14, 14)
+        outer.setSpacing(10)
 
-    def _init_equation_data(self):
-        """
-        Define a small set of example "equations" to populate the table.
-        You can edit/extend this as you like.
-        """
-        self.equations = [
-            {
-                "id": "tfd_vs_dephased",
-                "name": "TFD vs dephased TFD",
-                "category": "Pure LT",
-                "summary": "Compare pure TFD to its dephased (classical LT) version.",
-                "details": (
-                    "Investigates the difference between a pure thermofield double (TFD) "
-                    "state and its dephased version in the energy basis.\n\n"
-                    "Metrics of interest:\n"
-                    " - Mutual information I(A:B)\n"
-                    " - Relative entropy D(ρ || γ⊗γ)\n"
-                    " - Distance to classical LT subset\n"
-                    " - Distance to full LT set"
-                ),
-            },
-            {
-                "id": "classical_LT_line",
-                "name": "Classical LT line (2×2)",
-                "category": "Classical LT",
-                "summary": "Scan the 2×2 LT transportation polytope p(a).",
-                "details": (
-                    "Scans the full set of classical locally thermal states in the 2×2 case, "
-                    "parameterised by a single parameter a.\n\n"
-                    "Each point satisfies:\n"
-                    " - Fixed Gibbs marginals on A and A'\n"
-                    " - Varying classical correlations\n\n"
-                    "Useful to map I(A:B) as a function of classical correlation strength."
-                ),
-            },
-            {
-                "id": "random_pair_gp_lgp",
-                "name": "Random pair (GP vs LGP)",
-                "category": "Convertibility",
-                "summary": "Test random τ → τ' under global and local GP.",
-                "details": (
-                    "Samples random bipartite states τ and τ', and checks whether there exists:\n"
-                    " - A global Gibbs-preserving map G such that G(τ) = τ'\n"
-                    " - A composition of local GP maps on A and A' achieving the same\n\n"
-                    "Useful to probe differences between global and local GPOs."
-                ),
-            },
-            {
-                "id": "mix_with_gamma",
-                "name": "Mixture with γ⊗γ",
-                "category": "Thermalisation path",
-                "summary": "Study ρ(λ) = (1-λ)ρ + λ γ⊗γ.",
-                "details": (
-                    "Takes a reference LT state ρ and studies the family:\n"
-                    "   ρ(λ) = (1 - λ) ρ + λ (γ⊗γ)\n"
-                    "for λ ∈ [0,1].\n\n"
-                    "Useful to visualise decay of mutual information and free energy "
-                    "along a simple thermalisation path inside the LT slice."
-                ),
-            },
-            {
-                "id": "extremal_LT_boundary",
-                "name": "Extremal LT boundary (Phase 4)",
-                "category": "Geometry",
-                "summary": "Sample extremal LT states using support function SDPs.",
-                "details": (
-                    "Uses random Hermitian directions K and solves the extremal LT SDP:\n"
-                    "   maximise Tr(K ρ) over LT (or classical LT) states.\n\n"
-                    "Collects the resulting extremal states and plots them in the\n"
-                    "plane of (D(ρ || γ⊗γ), I(A:B)), optionally overlaying the\n"
-                    "classical LT line for comparison."
-                ),
-            },
+        header = QLabel("Locally Thermal (LT) & Gibbs-Preserving (GP) SDP Toolkit")
+        header_font = QFont()
+        header_font.setPointSize(14)
+        header_font.setBold(True)
+        header.setFont(header_font)
+        outer.addWidget(header)
 
+        sub = QLabel(
+            "Pick an experiment preset, set parameters, then Run. "
+            "For Custom mode, paste a JSON spec in the Custom box."
+        )
+        sub.setStyleSheet("color: #555;")
+        outer.addWidget(sub)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        outer.addWidget(splitter, 1)
+
+        # Left: experiment selection + help
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setSpacing(10)
+        splitter.addWidget(left)
+
+        self.eq_combo = QComboBox()
+        for item in self.equations:
+            self.eq_combo.addItem(item.title, item.eq_id)
+        self.eq_combo.currentIndexChanged.connect(self._refresh_details)
+        left_layout.addWidget(self._boxed("Experiment", self.eq_combo))
+
+        self.details = QTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setMinimumHeight(220)
+        left_layout.addWidget(self._boxed("Description", self.details))
+
+        self.howto = QTextEdit()
+        self.howto.setReadOnly(True)
+        self.howto.setMinimumHeight(220)
+        self.howto.setText(self._howto_text())
+        left_layout.addWidget(self._boxed("How to use inputs", self.howto))
+
+        # Right: parameters + custom JSON
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setSpacing(10)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+
+        # Module selection row
+        self.module_combo = QComboBox()
+        self.module_combo.addItems([
+            "Preset (recommended)",
+            "Custom (JSON spec)"
+        ])
+        self.module_combo.currentIndexChanged.connect(self._toggle_custom)
+        right_layout.addWidget(self._boxed("Mode", self.module_combo))
+
+        # Parameter grid
+        right_layout.addWidget(self._params_box())
+
+        # Custom JSON box
+        self.custom_text = QTextEdit()
+        self.custom_text.setPlaceholderText("Paste Custom JSON spec here (only used in Custom mode).")
+        self.custom_text.setText(_pretty_json_default())
+        self.custom_box = self._boxed("Custom SDP input (JSON)", self.custom_text)
+        right_layout.addWidget(self.custom_box)
+
+        # Action bar
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+
+        self.preview_vars = QPushButton("Preview variables_str")
+        self.preview_vars.clicked.connect(self._preview_variables_string)
+        actions.addWidget(self.preview_vars)
+
+        self.run_btn = QPushButton("Run")
+        self.run_btn.setDefault(True)
+        self.run_btn.clicked.connect(self._on_run)
+        actions.addWidget(self.run_btn)
+
+        right_layout.addLayout(actions)
+
+        self._refresh_details()
+        self._toggle_custom()
+
+    # -------------------------
+    # UI builders
+    # -------------------------
+
+    def _boxed(self, title: str, widget: QWidget) -> QGroupBox:
+        box = QGroupBox(title)
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.addWidget(widget)
+        return box
+
+    def _params_box(self) -> QGroupBox:
+        box = QGroupBox("Parameters")
+        grid = QGridLayout(box)
+        grid.setContentsMargins(10, 10, 10, 10)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+
+        r = 0
+
+        # Dimensions
+        self.dA = QSpinBox(); self.dA.setRange(2, 16); self.dA.setValue(2)
+        self.dAp = QSpinBox(); self.dAp.setRange(2, 16); self.dAp.setValue(2)
+        grid.addWidget(QLabel("dA"), r, 0); grid.addWidget(self.dA, r, 1)
+        grid.addWidget(QLabel("dA'"), r, 2); grid.addWidget(self.dAp, r, 3)
+        r += 1
+
+        # Thermo params
+        self.beta = QDoubleSpinBox(); self.beta.setDecimals(6); self.beta.setRange(0.0, 1000.0); self.beta.setValue(1.0)
+        self.beta.setSingleStep(0.1)
+        grid.addWidget(QLabel("β (inverse temperature)"), r, 0); grid.addWidget(self.beta, r, 1, 1, 3)
+        r += 1
+
+        # Tolerances
+        self.eps_eq_global = QDoubleSpinBox(); self.eps_eq_global.setDecimals(12); self.eps_eq_global.setRange(0.0, 1.0); self.eps_eq_global.setValue(1e-8)
+        self.eps_eq_global.setSingleStep(1e-8)
+        self.eps_eq_local = QDoubleSpinBox(); self.eps_eq_local.setDecimals(12); self.eps_eq_local.setRange(0.0, 1.0); self.eps_eq_local.setValue(1e-6)
+        self.eps_eq_local.setSingleStep(1e-6)
+        grid.addWidget(QLabel("ε_eq (global GP)"), r, 0); grid.addWidget(self.eps_eq_global, r, 1)
+        grid.addWidget(QLabel("ε_eq (local GP)"), r, 2); grid.addWidget(self.eps_eq_local, r, 3)
+        r += 1
+
+        self.eps_gibbs = QDoubleSpinBox(); self.eps_gibbs.setDecimals(12); self.eps_gibbs.setRange(0.0, 1.0); self.eps_gibbs.setValue(1e-8)
+        self.eps_gibbs.setSingleStep(1e-8)
+        grid.addWidget(QLabel("ε_Gibbs (GP constraint)"), r, 0); grid.addWidget(self.eps_gibbs, r, 1, 1, 3)
+        r += 1
+
+        # Sampling / misc
+        self.num_samples = QSpinBox(); self.num_samples.setRange(1, 5000); self.num_samples.setValue(40)
+        grid.addWidget(QLabel("num_samples"), r, 0); grid.addWidget(self.num_samples, r, 1)
+
+        self.seed = QSpinBox(); self.seed.setRange(-1, 10_000_000); self.seed.setValue(0)
+        grid.addWidget(QLabel("seed"), r, 2); grid.addWidget(self.seed, r, 3)
+        r += 1
+
+        # Algorithm toggles
+        self.symmetric = QCheckBox("symmetric (γA = γA')")
+        self.symmetric.setChecked(True)
+        self.classical = QCheckBox("classical LT (diagonal only)")
+        self.reset_system = QCheckBox("reset_system (rebuild Gibbs states)")
+        self.reset_system.setChecked(False)
+
+        grid.addWidget(self.symmetric, r, 0, 1, 2)
+        grid.addWidget(self.classical, r, 2, 1, 2)
+        r += 1
+        grid.addWidget(self.reset_system, r, 0, 1, 4)
+        r += 1
+
+        # Solver dropdown (backend may ignore; included for future use)
+        self.solver = QComboBox()
+        self.solver.addItems(["SCS (default)", "CVXOPT", "MOSEK (if installed)"])
+        grid.addWidget(QLabel("solver"), r, 0); grid.addWidget(self.solver, r, 1, 1, 3)
+        r += 1
+
+        # Compact status line
+        self.vars_preview_line = QLineEdit()
+        self.vars_preview_line.setReadOnly(True)
+        self.vars_preview_line.setPlaceholderText("variables_str preview will appear here.")
+        grid.addWidget(QLabel("variables_str"), r, 0)
+        grid.addWidget(self.vars_preview_line, r, 1, 1, 3)
+
+        return box
+
+    # -------------------------
+    # Text blocks
+    # -------------------------
+
+    def _howto_text(self) -> str:
+        return (
+            "This UI writes a legacy `variables_str` (comma-separated key=value) so your existing backend\n"
+            "can keep using `parse_variables_string`.\n\n"
+            "Common variables:\n"
+            "  beta=1.0                inverse temperature\n"
+            "  dA=2, dAp=2             local dimensions\n"
+            "  eps_eq_global=1e-8      conversion tolerance for global GP\n"
+            "  eps_eq_local=1e-6       conversion tolerance for local GP\n"
+            "  eps_gibbs=1e-8          tolerance for GP constraint G(γ)=γ\n"
+            "  num_samples=40          sampling size (for random/extremal scans)\n"
+            "  seed=0                  RNG seed\n"
+            "  symmetric=1             enforce γA=γA'\n"
+            "  classical=1             diagonal (classical) LT variant\n"
+            "  reset_system=1          force recompute Gibbs states when beta/dims change\n\n"
+            "Custom mode:\n"
+            "- Paste a JSON spec in the Custom box. Your backend can parse it instead of `variables_str`.\n"
+            "- Recommended fields: task, tau, tau_p, check_global, check_local, eps_eq_global, eps_eq_local.\n"
+        )
+
+    # -------------------------
+    # Behaviors
+    # -------------------------
+
+    def _default_equations(self) -> list[EquationItem]:
+        # Keep IDs stable with whatever your backend_run switch uses.
+        return [
+            EquationItem(
+                "tfd_vs_dephased",
+                "TFD → Dephased TFD (GP vs LGP)",
+                "Build a thermo-field-double-like correlated state τ and compare convertibility to a dephased version."
+            ),
+            EquationItem(
+                "random_pair_gp_lgp",
+                "Random τ → τ' (GP vs LGP)",
+                "Sample random pairs and test feasibility under global and (heuristic) local GP."
+            ),
+            EquationItem(
+                "closest_lt_distance",
+                "Distance to LT (trace norm SDP)",
+                "Compute min_{σ∈LT} 1/2 ||ρ - σ||_1 using the standard SDP with P,N ⪰ 0."
+            ),
+            EquationItem(
+                "custom",
+                "Custom (backend-defined)",
+                "In Custom mode, the JSON spec is passed through verbatim so the backend can build any SDP it wants."
+            ),
         ]
 
-    # ---------- UI construction ----------
-
-    def _build_ui(self):
-        central = QtWidgets.QWidget()
-        self.setCentralWidget(central)
-
-        main_layout = QtWidgets.QVBoxLayout(central)
-
-        # --- Header row with title + Run button (top-right) ---
-        header_layout = QtWidgets.QHBoxLayout()
-        self.title_label = QtWidgets.QLabel("Locally Thermal / SDP Explorer")
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        header_layout.addWidget(self.title_label)
-
-        header_layout.addStretch()
-
-        self.run_button = QtWidgets.QPushButton("Run")
-        self.run_button.setToolTip("Run the selected equation with the current parameters")
-        header_layout.addWidget(self.run_button)
-
-        main_layout.addLayout(header_layout)
-
-        # --- Middle: splitter with equation table (left) and details (right) ---
-        mid_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-
-        # Left: equations "table" using QTreeWidget
-        self.eq_tree = QtWidgets.QTreeWidget()
-        self.eq_tree.setHeaderLabels(["Name", "Category", "Summary"])
-        self.eq_tree.setColumnWidth(0, 200)
-        self.eq_tree.setColumnWidth(1, 130)
-        self.eq_tree.setAlternatingRowColors(True)
-        self.eq_tree.setRootIsDecorated(True)  # allows expansion arrow
-
-        # Populate tree
-        for eq in self.equations:
-            item = QtWidgets.QTreeWidgetItem([
-                eq["name"],
-                eq["category"],
-                eq["summary"],
-            ])
-            item.setData(0, QtCore.Qt.UserRole, eq["id"])  # store ID
-            # Add a child item for details (so clicking triangle "expands")
-            child = QtWidgets.QTreeWidgetItem(["Details", "", "Double-click or see right panel"])
-            item.addChild(child)
-            self.eq_tree.addTopLevelItem(item)
-
-        mid_splitter.addWidget(self.eq_tree)
-
-        # Right: details text
-        self.details_box = QtWidgets.QTextEdit()
-        self.details_box.setReadOnly(True)
-        self.details_box.setPlaceholderText("Select an equation on the left to see details here.")
-        mid_splitter.addWidget(self.details_box)
-
-        mid_splitter.setStretchFactor(0, 2)
-        mid_splitter.setStretchFactor(1, 3)
-
-        main_layout.addWidget(mid_splitter, stretch=5)
-
-        # --- Bottom: parameter configuration group ---
-        self.param_group = QtWidgets.QGroupBox("Parameters")
-        form_layout = QtWidgets.QFormLayout(self.param_group)
-
-        # Module type
-        self.module_type_combo = QtWidgets.QComboBox()
-        self.module_type_combo.addItems([
-            "LT geometry",
-            "Convertibility",
-            "Classical LT scan",
-            "Custom",
-        ])
-        form_layout.addRow("Module type:", self.module_type_combo)
-
-        # Variables input (free text for now: e.g., 'beta=1.0, d=2')
-        self.variables_line = QtWidgets.QLineEdit()
-        self.variables_line.setPlaceholderText("e.g. beta=1.0, d=2, lam=0.3")
-        form_layout.addRow("Variables:", self.variables_line)
-
-        # Custom function (multi-line, e.g. custom SDP expression or code hint)
-        self.custom_func_text = QtWidgets.QTextEdit()
-        self.custom_func_text.setPlaceholderText(
-            "Optional: paste or describe a custom function / configuration here.\n"
-            "For example, a specific family of states ρ(θ) or a custom constraint."
+    def _refresh_details(self):
+        eq_id = self.eq_combo.currentData()
+        item = next((x for x in self.equations if x.eq_id == eq_id), None)
+        if not item:
+            self.details.setText("")
+            return
+        self.details.setText(
+            f"{item.title}\n\n"
+            f"ID: {item.eq_id}\n\n"
+            f"{item.description}\n\n"
+            "Outputs depend on your backend preset implementation."
         )
-        form_layout.addRow("Custom SDP input:", self.custom_func_text)
 
-        main_layout.addWidget(self.param_group, stretch=2)
+    def _toggle_custom(self):
+        is_custom = (self.module_combo.currentIndex() == 1)  # Custom (JSON spec)
+        self.custom_box.setEnabled(is_custom)
+        self.custom_text.setEnabled(is_custom)
 
-        # Status bar
-        self.status_bar = self.statusBar()
-        self.status_bar.showMessage("Ready.")
+    def _build_variables_string(self) -> str:
+        # Backwards-compatible key=value string.
+        pairs = []
+        pairs.append(_kv("dA", int(self.dA.value())))
+        pairs.append(_kv("dAp", int(self.dAp.value())))
+        pairs.append(_kv("beta", float(self.beta.value())))
+        pairs.append(_kv("eps_eq_global", float(self.eps_eq_global.value())))
+        pairs.append(_kv("eps_eq_local", float(self.eps_eq_local.value())))
+        pairs.append(_kv("eps_gibbs", float(self.eps_gibbs.value())))
+        pairs.append(_kv("num_samples", int(self.num_samples.value())))
+        pairs.append(_kv("seed", int(self.seed.value())))
+        pairs.append(_kv("symmetric", self.symmetric.isChecked()))
+        pairs.append(_kv("classical", self.classical.isChecked()))
+        pairs.append(_kv("reset_system", self.reset_system.isChecked()))
 
-        # By default select the first equation
-        if self.eq_tree.topLevelItemCount() > 0:
-            first_item = self.eq_tree.topLevelItem(0)
-            self.eq_tree.setCurrentItem(first_item)
-            self._update_details_from_item(first_item)
+        # Solver hint (backend may ignore)
+        solver_map = {
+            0: "SCS",
+            1: "CVXOPT",
+            2: "MOSEK",
+        }
+        pairs.append(_kv("solver", solver_map.get(self.solver.currentIndex(), "SCS")))
 
-    # ---------- Signal connections ----------
+        return ", ".join(pairs)
 
-    def _connect_signals(self):
-        self.eq_tree.itemSelectionChanged.connect(self.on_equation_selected)
-        self.run_button.clicked.connect(self.on_run_clicked)
+    def _build_config(self) -> Dict[str, Any]:
+        eq_id = self.eq_combo.currentData()
+        module_type = "custom" if self.module_combo.currentIndex() == 1 else "preset"
 
-    # ---------- Helpers ----------
+        variables_str = self._build_variables_string()
+        custom_function = self.custom_text.toPlainText().strip()
 
-    def _find_equation_by_id(self, eq_id):
-        for eq in self.equations:
-            if eq["id"] == eq_id:
-                return eq
-        return None
+        # Validate JSON if in custom mode (but still pass through even if invalid, with warning).
+        if module_type == "custom" and custom_function:
+            try:
+                json.loads(custom_function)
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    "Custom JSON looks invalid",
+                    "Your Custom SDP input is not valid JSON.\n\n"
+                    f"Error: {e}\n\n"
+                    "It will still be passed to the backend as a raw string."
+                )
 
-    def _update_details_from_item(self, item):
-        eq_id = item.data(0, QtCore.Qt.UserRole)
-        eq = self._find_equation_by_id(eq_id)
-        if eq is None:
-            self.details_box.clear()
-            return
-        text = (
-            f"<b>{eq['name']}</b><br>"
-            f"<i>Category: {eq['category']}</i><br><br>"
-            f"{eq['details']}"
-        )
-        self.details_box.setHtml(text)
-
-    # ---------- Slots ----------
-
-    def on_equation_selected(self):
-        item = self.eq_tree.currentItem()
-        # Only use top-level item for details
-        if item is None:
-            return
-        if item.parent() is not None:
-            # If user clicked the "Details" child, use parent
-            item = item.parent()
-            self.eq_tree.setCurrentItem(item)
-
-        self._update_details_from_item(item)
-        eq_id = item.data(0, QtCore.Qt.UserRole)
-        eq = self._find_equation_by_id(eq_id)
-        if eq:
-            self.status_bar.showMessage(f"Selected: {eq['name']}")
-
-    def on_run_clicked(self):
-        # Gather selected equation
-        item = self.eq_tree.currentItem()
-        if item is None:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "No selection",
-                "Please select an equation to run.",
-            )
-            return
-
-        if item.parent() is not None:
-            item = item.parent()
-
-        eq_id = item.data(0, QtCore.Qt.UserRole)
-        eq = self._find_equation_by_id(eq_id)
-
-        # Gather parameters
-        module_type = self.module_type_combo.currentText()
-        variables_str = self.variables_line.text()
-        custom_func_str = self.custom_func_text.toPlainText()
-
-        config = {
+        return {
             "selected_equation_id": eq_id,
-            "selected_equation_name": eq["name"] if eq else None,
             "module_type": module_type,
-            "variables": variables_str,
-            "custom_function": custom_func_str,
+            "variables_str": variables_str,
+            "custom_function": custom_function,
         }
 
-        # Call backend callback if present; otherwise just print
-        if self.run_callback is not None:
-            try:
-                self.run_callback(config)
-                self.status_bar.showMessage("Run completed.", 5000)
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"An error occurred while running the backend:\n{e}",
-                )
-                self.status_bar.showMessage("Run failed.", 5000)
-        else:
-            # Fallback behaviour: print to console
-            print("Run button pressed with configuration:")
-            for k, v in config.items():
-                print(f"  {k}: {v}")
-            self.status_bar.showMessage("Run pressed (no backend callback attached).", 5000)
+    def _preview_variables_string(self):
+        s = self._build_variables_string()
+        self.vars_preview_line.setText(s)
+
+    def _on_run(self):
+        cfg = self._build_config()
+        # Keep preview line up-to-date when running
+        self.vars_preview_line.setText(cfg["variables_str"])
+        if self.run_callback:
+            self.run_callback(cfg)
 
 
-def launch_gui(run_callback=None):
-    """
-    Convenience function to launch the GUI standalone.
+# -------------------------
+# Manual test (optional)
+# -------------------------
 
-    Example:
-        from sdp_gui import launch_gui
-        launch_gui()
-    """
+def _demo():
     import sys
-    app = QtWidgets.QApplication(sys.argv)
-    win = LTSDPWindow(run_callback=run_callback)
-    win.show()
+
+    def _run(cfg):
+        # Replace with real backend call.
+        QMessageBox.information(None, "Run pressed", json.dumps(cfg, indent=2))
+
+    app = QApplication(sys.argv)
+    w = LTSDPWindow(_run)
+    w.show()
     sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    _demo()
