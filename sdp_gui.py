@@ -310,6 +310,16 @@ class LTSDPWindow(QMainWindow):
                 "Compute min_{σ∈LT} 1/2 ||ρ - σ||_1 using the standard SDP with P,N ⪰ 0."
             ),
             EquationItem(
+                "lt_region_geometry",
+                "LT Region Geometry (Extremal Boundary)",
+                "Sample extremal locally thermal states and plot their geometric region"
+            ),
+            EquationItem(
+                "lt_interior_geometry",
+                "LT Interior Geometry (Random → LT Projection)",
+                "Project random quantum states onto the locally thermal set and visualise the interior geometry."
+            ),
+            EquationItem(
                 "custom",
                 "Custom (backend-defined)",
                 "In Custom mode, the JSON spec is passed through verbatim so the backend can build any SDP it wants."

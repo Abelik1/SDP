@@ -461,30 +461,3 @@ class LTAnalyzer:
 
         return extremals
     
-import io
-from contextlib import redirect_stdout
-
-buf = io.StringIO()
-with redirect_stdout(buf):
-    # run your normal analysis here (whatever currently prints results)
-    run_selected_experiment(config)
-
-results_text = buf.getvalue()
-from report_export import generate_pdf_report
-
-if config.get("export_pdf"):
-    outdir = config.get("report_outdir") or "reports"
-    stem = config.get("report_stem") or None
-
-    pdf_path = generate_pdf_report(
-        config=config,
-        results_text=results_text,
-        output_dir=outdir,
-        stem=stem,
-        include_project_pdfs=True,
-        # optional: override which PDFs get appended
-        # project_pdf_paths=[...],
-        max_pages_per_pdf=10,  # prevents a gigantic report
-    )
-
-    print(f"[report] wrote {pdf_path}")

@@ -1,8 +1,10 @@
 import sys
 import os
 import numpy as np
+import matplotlib
+matplotlib.use("Qt5Agg")
 from PyQt5 import QtWidgets
-
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt  # <-- add this
 
 from sdp_system import LTSDPSystem, dagger
@@ -552,6 +554,249 @@ def main():
             log_info("Extremal LT boundary", text)
             print("Finished Processing")
             return
+        elif eq_id == "lt_region_geometry":
+            # -------------------------------
+            # Parameters (can be set in GUI)
+            # -------------------------------
+            num_samples = int(vars_dict.get("num_samples", 50))
+            classical_flag = bool(int(vars_dict.get("classical", 0)))
+
+            log_info(
+                "LT Region Geometry",
+                f"Sampling {num_samples} extremal LT states "
+                f"({'classical' if classical_flag else 'quantum'})"
+            )
+
+            # -------------------------------
+            # Sample extremal LT states
+            # -------------------------------
+            extremals = analyzer.sample_extremal_lt_states(
+                num_samples=num_samples,
+                classical=classical_flag,
+                solver=system.solver_default,
+                tol=system.tol_default,
+                verbose=False,
+            )
+
+            if not extremals:
+                log_warning(
+                    "LT Region Geometry",
+                    "No extremal LT states found (all SDPs failed)."
+                )
+                return
+
+            # -------------------------------
+            # Extract monotones for plotting
+            # -------------------------------
+            D_vals = [rep["monotones"]["D_rho_vs_gamma"] for rep in extremals]
+            I_vals = [rep["monotones"]["I_rho"] for rep in extremals]
+
+            # -------------------------------
+            # Optional: overlay classical LT line (2×2 only)
+            # -------------------------------
+            D_classical, I_classical = None, None
+            if system.dims == (2, 2) and not classical_flag:
+                reports_cl = analyzer.scan_classical_LT_line_qubit(
+                    num_points=30,
+                    solver=system.solver_default,
+                    tol=system.tol_default,
+                    verbose=False,
+                )
+                D_classical = [
+                    rep["monotones"]["D_rho_vs_gamma"] for rep in reports_cl
+                ]
+                I_classical = [
+                    rep["monotones"]["I_rho"] for rep in reports_cl
+                ]
+
+            # -------------------------------
+            # Extract monotones for plotting
+            # -------------------------------
+            D_vals = [rep["monotones"]["D_rho_vs_gamma"] for rep in extremals]
+            I_vals = [rep["monotones"]["I_rho"] for rep in extremals]
+            C_vals = [
+                rep["monotones"]["C_A"] + rep["monotones"]["C_Ap"]
+                for rep in extremals
+            ]
+
+            # -------------------------------
+            # Optional: classical LT curve (z = 0)
+            # -------------------------------
+            D_classical, I_classical = None, None
+            if system.dims == (2, 2) and not classical_flag:
+                reports_cl = analyzer.scan_classical_LT_line_qubit(
+                    num_points=30,
+                    solver=system.solver_default,
+                    tol=system.tol_default,
+                    verbose=False,
+                )
+                D_classical = [
+                    rep["monotones"]["D_rho_vs_gamma"] for rep in reports_cl
+                ]
+                I_classical = [
+                    rep["monotones"]["I_rho"] for rep in reports_cl
+                ]
+                C_classical = [0.0 for _ in reports_cl]
+
+            # -------------------------------
+            # 3D plot
+            # -------------------------------
+            ensure_png_dir()
+
+            fig = plt.figure(figsize=(7, 6))
+            ax = fig.add_subplot(111, projection="3d")
+
+            sc = ax.scatter(
+                D_vals,
+                I_vals,
+                C_vals,
+                c=C_vals,
+                depthshade=True,
+                s=50,
+                label="Extremal LT states"
+            )
+
+            if D_classical is not None:
+                ax.plot(
+                    D_classical,
+                    I_classical,
+                    C_classical,
+                    linestyle="--",
+                    marker="o",
+                    label="Classical LT boundary (C = 0)"
+                )
+
+            ax.set_xlabel(r"$D(\rho \| \gamma \otimes \gamma)$")
+            ax.set_ylabel(r"$I(A\!:\!B)$")
+            ax.set_zlabel(r"$C_A + C_{A'}$")
+
+            ax.set_title("Geometry of the Locally Thermal State Space")
+
+            fig.colorbar(sc, ax=ax, pad=0.1, label="Total coherence")
+
+            ax.legend()
+
+            path = save_plot(fig, "lt_region_geometry_3d.png")
+            
+            log_info(
+                "LT Region Geometry",
+                f"Collected {len(extremals)} extremal LT states.\n"
+                f"3D plot saved to:\n{path}"
+            )
+            fig.show()
+            print("Finished Processing")
+        elif eq_id == "lt_interior_geometry":
+            # --------------------------------
+            # Parameters
+            # --------------------------------
+            num_samples = int(vars_dict.get("num_samples", 200))
+            seed = int(vars_dict.get("seed", 0))
+
+            if seed >= 0:
+                np.random.seed(seed)
+
+            log_info(
+                "LT Interior Geometry",
+                f"Sampling {num_samples} random states and projecting to LT set"
+            )
+
+            # --------------------------------
+            # Generate random states
+            # --------------------------------
+            dA, dAp = system.dims
+            d = dA * dAp
+
+            def random_state():
+                X = np.random.randn(d, d) + 1j * np.random.randn(d, d)
+                rho = X @ dagger(X)
+                return rho / np.trace(rho)
+
+            projected_states = []
+
+            for _ in range(num_samples):
+                rho = random_state()
+
+                # Project to full LT
+                sigma_LT, _, status_LT = system.closest_lt_state(
+                    rho,
+                    classical=False,
+                    solver=system.solver_default,
+                    tol=system.tol_default,
+                    verbose=False,
+                )
+
+                # Project to classical LT
+                sigma_cl, dist_cl, status_cl = system.closest_lt_state(
+                    rho,
+                    classical=True,
+                    solver=system.solver_default,
+                    tol=system.tol_default,
+                    verbose=False,
+                )
+
+                if sigma_LT is None or sigma_cl is None:
+                    continue
+
+                # Compute monotones
+                D_val, I_val, C_A, C_Ap = system.monotones(sigma_LT)
+
+                projected_states.append({
+                    "D": D_val,
+                    "I": I_val,
+                    "dist_classical": dist_cl,
+                })
+
+            if not projected_states:
+                log_warning(
+                    "LT Interior Geometry",
+                    "No LT projections succeeded."
+                )
+                return
+
+            # --------------------------------
+            # Extract data
+            # --------------------------------
+            D_vals = [p["D"] for p in projected_states]
+            I_vals = [p["I"] for p in projected_states]
+            Z_vals = [p["dist_classical"] for p in projected_states]
+
+            # --------------------------------
+            # Plot (interactive 3D)
+            # --------------------------------
+            ensure_png_dir()
+
+            fig = plt.figure(figsize=(7, 6))
+            ax = fig.add_subplot(111, projection="3d")
+
+            sc = ax.scatter(
+                D_vals,
+                I_vals,
+                Z_vals,
+                c=Z_vals,
+                cmap="viridis",
+                s=45,
+                depthshade=True,
+                label="Projected LT states"
+            )
+
+            ax.set_xlabel(r"$D(\sigma \| \gamma \otimes \gamma)$")
+            ax.set_ylabel(r"$I(A\!:\!B)$")
+            ax.set_zlabel(r"$\frac{1}{2}\|\sigma - \sigma_{\mathrm{classical}}\|_1$")
+
+            ax.set_title("Interior Geometry of the Locally Thermal State Space")
+
+            fig.colorbar(sc, ax=ax, pad=0.1, label="Distance to classical LT")
+
+            path = save_plot(fig, "lt_interior_geometry_3d.png")
+
+            log_info(
+                "LT Interior Geometry",
+                f"Projected {len(projected_states)} random states.\n"
+                f"3D plot saved to:\n{path}"
+            )
+
+            fig.show()
+            print("Finished Processing")
 
         else:
             # Fallback: just show the config
