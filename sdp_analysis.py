@@ -1,148 +1,105 @@
-from sdp_system import LTSDPSystem, dagger, kron, partial_trace
-
 import numpy as np
-from scipy.linalg import eigh
 from numpy.linalg import norm
+from scipy.linalg import eigh
 
-# assuming LTSDPSystem is already imported / defined in this file
-# from lt_sdp_system import LTSDPSystem, dagger, kron, partial_trace
+from sdp_system import (
+    dagger,
+    kron,
+    gibbs_state,
+    mutual_information,
+    relative_entropy,
+    relative_entropy_of_coherence,
+    partial_trace,
+)
 
 
-
-# ==========================================================
-#  1. State factory: build various test states systematically
-# ==========================================================
+# ==========================================
+# LT state factory
+# ==========================================
 
 class LTStateFactory:
-    """
-    Utility class for constructing states to feed into LTSDPSystem.
-
-    Typical use:
-      factory = LTStateFactory(system)
-      tau     = factory.random_state()
-      tfd     = factory.tfd_state()
-      rho_cl  = factory.classical_LT_point(param=0.3)
-    """
-
     def __init__(self, system):
-        """
-        system: LTSDPSystem instance (defines H_A, H_Ap, beta, gammaA, gammaAp, dims)
-        """
         self.system = system
-        self.dA, self.dAp = system.dims
-        self.d = self.dA * self.dAp
-        self.gammaA = system.gammaA
-        self.gammaAp = system.gammaAp
 
-    # ---------- general helpers ----------
-
-    @staticmethod
-    def random_state_dim(d, seed=None):
-        """Random full-rank density matrix on dimension d."""
-        rng = np.random.default_rng(seed)
-        X = rng.normal(size=(d, d)) + 1j * rng.normal(size=(d, d))
+    def random_state_dim(self, d):
+        X = np.random.randn(d, d) + 1j * np.random.randn(d, d)
         rho = X @ dagger(X)
         return rho / np.trace(rho)
 
-    def random_state(self, seed=None):
-        """Random full-rank state on A⊗A'."""
-        return self.random_state_dim(self.d, seed=seed)
-
-    # ---------- TFD-like states ----------
+    def random_state(self):
+        dA, dAp = self.system.dims
+        return self.random_state_dim(dA * dAp)
 
     def tfd_state(self):
-        """
-        Construct a TFD-like purification between A and A'.
-        This assumes H_A == H_Ap (same spectrum & eigenbasis) so that
-        gammaA == gammaAp and the TFD is locally thermal with marginal gamma.
-
-        If H_A and H_Ap differ, this will raise a ValueError.
-        """
-        # Diagonalise H_A and H_Ap
-        eA, UA = eigh((self.system.H_A + dagger(self.system.H_A)) / 2.0)
-        eAp, UAp = eigh((self.system.H_Ap + dagger(self.system.H_Ap)) / 2.0)
-
-        # Check compatibility: same dimension and (approximately) same spectrum
-        if self.dA != self.dAp or not np.allclose(eA, eAp, atol=1e-10):
-            raise ValueError(
-                "TFD construction here assumes H_A and H_Ap have the same spectrum/basis."
-            )
-
+        H_A = self.system.H_A
+        H_Ap = self.system.H_Ap
         beta = self.system.beta
-        g = np.exp(-beta * eA)
-        g = g / np.sum(g)
-        # Build TFD in the joint eigenbasis: |TFD> = sum_n sqrt(g_n) |n>_A |n>_A'
-        d = self.dA
-        psi = np.zeros((d, d), dtype=complex)
-        for n in range(d):
-            psi[n, n] = np.sqrt(g[n])
-        # Convert to full Hilbert space basis (if UA != I)
-        psi_full = (UA @ psi @ UAp.T)  # shape (d, d)
-        ket_TFD = psi_full.reshape(-1, 1)  # vector in A⊗A'
-        rho_TFD = ket_TFD @ dagger(ket_TFD)
-        return rho_TFD / np.trace(rho_TFD)
 
-    # ---------- Classical LT states (2x2 case) ----------
+        # Need matching spectra for TFD-like construction
+        wA, UA = eigh((H_A + dagger(H_A)) / 2.0)
+        wAp, UAp = eigh((H_Ap + dagger(H_Ap)) / 2.0)
+
+        wA = np.real(wA)
+        wAp = np.real(wAp)
+
+        if wA.shape != wAp.shape or norm(np.sort(wA) - np.sort(wAp)) > 1e-8:
+            raise ValueError("TFD requires identical energy spectra. Use symmetric=True.")
+
+        # Thermal probabilities
+        wA = wA - np.min(wA)
+        p = np.exp(-beta * wA)
+        p = p / np.sum(p)
+
+        # Build |TFD> in energy eigenbasis, then rotate back to computational basis
+        d = len(p)
+        psi = np.zeros((d * d,), dtype=complex)
+        for i in range(d):
+            psi[i * d + i] = np.sqrt(p[i])
+        rho = np.outer(psi, psi.conj())
+
+        U_tot = np.kron(UA, UAp)
+        rho = U_tot @ rho @ dagger(U_tot)
+        return 0.5 * (rho + dagger(rho))
 
     def classical_LT_point_qubit(self, a=None):
-        """
-        For dA = dAp = 2, generate a classical (diagonal) LT state with
-        marginals gammaA, gammaAp (assumed equal).
-
-        We use the 2x2 transportation polytope parameterisation:
-
-          p(a) = [[a,         g0 - a],
-                  [g0 - a,    g1 - g0 + a]]
-
-        with a in [2g0 - 1, g0].
-
-        If `a` is None, choose a random point in that interval.
-        """
-        if self.dA != 2 or self.dAp != 2:
-            raise ValueError("classical_LT_point_qubit is only implemented for 2x2.")
-
-        # Extract Gibbs probabilities from gammaA (assume diagonal in energy basis)
-        # We diagonalise to get eigenvalues; ordering doesn't matter for diagonals.
-        evals, U = eigh((self.gammaA + dagger(self.gammaA)) / 2.0)
-        g = np.real(evals)
-        # Sort descending just for consistency
-        g = np.flip(np.sort(g))
-        g0, g1 = g
-
+        # For d=2, classical LT line parameterized by a in [2g0-1, g0]
+        gammaA = self.system.gammaA
+        evals, _ = eigh((gammaA + dagger(gammaA)) / 2.0)
+        g = np.flip(np.sort(np.real(evals)))
+        g0 = g[0]
         a_min = 2 * g0 - 1.0
         a_max = g0
 
         if a is None:
-            rng = np.random.default_rng()
-            a = rng.uniform(a_min, a_max)
-        else:
-            if not (a_min - 1e-10 <= a <= a_max + 1e-10):
-                raise ValueError(f"a must lie in [{a_min}, {a_max}] for LT marginals.")
+            a = 0.5 * (a_min + a_max)
 
+        a = float(a)
+        a = min(max(a, a_min), a_max)
+
+        # p00=a, p01=g0-a, p10=g0-a, p11=1-2g0+a
         p00 = a
         p01 = g0 - a
         p10 = g0 - a
-        p11 = g1 - g0 + a
+        p11 = 1 - 2 * g0 + a
 
-        p = np.array([p00, p01, p10, p11], dtype=float)
-        if np.any(p < -1e-12):
-            raise RuntimeError("Computed probabilities are negative: not LT.")
-
-        # Diagonal state in computational / energy product basis
-        rho_diag = np.diag(p)
-        rho_diag = rho_diag / np.trace(rho_diag)
-        return rho_diag
-
-    # ---------- Generic classical LT sample (2x2) ----------
+        diag = np.array([p00, p01, p10, p11], dtype=float)
+        rho = np.diag(diag.astype(complex))
+        return rho / np.trace(rho)
 
     def random_classical_LT_qubit(self):
-        """Sample a random classical LT point in the 2x2 case."""
-        return self.classical_LT_point_qubit(a=None)
+        gammaA = self.system.gammaA
+        evals, _ = eigh((gammaA + dagger(gammaA)) / 2.0)
+        g = np.flip(np.sort(np.real(evals)))
+        g0 = g[0]
+        a_min = 2 * g0 - 1.0
+        a_max = g0
+        a = np.random.uniform(a_min, a_max)
+        return self.classical_LT_point_qubit(a=a)
 
 
-# ==========================================================
-#  2. Analysis class: wrap SDPs + factories into experiments
-# ==========================================================
+# ==========================================
+# High-level analysis / experiment helper
+# ==========================================
 
 class LTAnalyzer:
     """
@@ -327,10 +284,6 @@ class LTAnalyzer:
         if self.system.dims != (2, 2):
             raise ValueError("scan_classical_LT_line_qubit only valid for 2x2.")
 
-        # Get interval [a_min, a_max] from factory
-        # We'll hack it by calling classical_LT_point_qubit twice.
-        # First call to get parameters:
-        rho_sample = self.factory.classical_LT_point_qubit(a=None)
         # Recover g0 from gammaA
         evals, _ = eigh((self.system.gammaA + dagger(self.system.gammaA)) / 2.0)
         g = np.flip(np.sort(np.real(evals)))
@@ -383,10 +336,6 @@ class LTAnalyzer:
           - build a TFD state (if possible),
           - dephase it in local energy bases (A and A'),
           - analyze both, and compare.
-
-        This shows very cleanly:
-          - TFD is LT and globally very athermal (coherent),
-          - dephased version is classical LT on the same marginals.
         """
         tfd = self.factory.tfd_state()
         # dephase locally in energy basis
@@ -407,6 +356,7 @@ class LTAnalyzer:
         )
 
         return {"tfd": rep_tfd, "tfd_dephased": rep_deph}
+
     def sample_extremal_lt_states(
         self,
         num_samples=20,
@@ -460,4 +410,3 @@ class LTAnalyzer:
             )
 
         return extremals
-    

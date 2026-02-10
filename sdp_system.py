@@ -20,96 +20,77 @@ def safe_eigvals(rho, tol=1e-12):
 def von_neumann_entropy(rho, tol=1e-12):
     w = safe_eigvals(rho, tol=tol)
     w = w[w > tol]
-    if w.size == 0: 
+    if w.size == 0:
         return 0.0
-    return float(-np.sum(w * np.log(w)))
+    return -np.sum(w * np.log(w))
 
-def matrix_log_psd(rho, tol=1e-12):
-    # log of PSD matrix (on support)
-    w, U = eigh((rho + dagger(rho))/2.0)
+def gibbs_state(H, beta, tol=1e-12):
+    w, U = eigh((H + dagger(H)) / 2.0)
     w = np.real(w)
-    w[w < 0] = 0.0
-    with np.errstate(divide='ignore'):
-        lw = np.where(w > tol, np.log(w), -np.inf)
-    lw_finite = np.where(np.isfinite(lw), lw, 0.0)
-    return U @ np.diag(lw_finite) @ dagger(U)
+    w = w - np.min(w)
+    e = np.exp(-beta * w)
+    Z = np.sum(e)
+    p = e / Z
+    return U @ np.diag(p) @ dagger(U)
+
+def kron(A, B):
+    return np.kron(A, B)
+
+def partial_trace(rho, dims, keep=[0], tol=1e-12):
+    # dims = (dA, dB), keep=[0] returns Tr_B; keep=[1] returns Tr_A
+    dA, dB = dims
+    rho = rho.reshape(dA, dB, dA, dB)
+    if keep == [0]:
+        out = np.zeros((dA, dA), dtype=complex)
+        for i in range(dB):
+            out += rho[:, i, :, i]
+        return 0.5 * (out + dagger(out))
+    if keep == [1]:
+        out = np.zeros((dB, dB), dtype=complex)
+        for i in range(dA):
+            out += rho[i, :, i, :]
+        return 0.5 * (out + dagger(out))
+    raise ValueError("keep must be [0] or [1].")
 
 def relative_entropy(rho, sigma, tol=1e-12):
-    # D(rho || sigma) = Tr[rho (log rho - log sigma)] on support of rho
-    w_sigma, U_sigma = eigh((sigma + dagger(sigma))/2.0)
-    w_sigma = np.real(w_sigma)
-    w_sigma[w_sigma < 0] = 0.0
-    support_sigma = w_sigma > tol
-
-    P_sigma = (
-        U_sigma[:, support_sigma] @ dagger(U_sigma[:, support_sigma]) 
-        if np.any(support_sigma) else np.zeros_like(sigma)
-    )
-    if norm((np.eye(rho.shape[0]) - P_sigma) @ rho @ (np.eye(rho.shape[0]) - P_sigma), 2) > tol:
-        return np.inf
-
-    log_rho = matrix_log_psd(rho, tol=tol)
-    log_sigma = matrix_log_psd(sigma, tol=tol)
-    return float(np.real(np.trace(rho @ (log_rho - log_sigma))))
-
-def kron(*args):
-    out = np.array([[1.0]])
-    for a in args:
-        out = np.kron(out, a)
-    return out
-
-def partial_trace(rho, dims, keep, tol=1e-12):
-    """
-    Partial trace over subsystems not in 'keep'.
-    dims: list/tuple of subsystem dims [d1, d2, ... , dn]
-    keep: tuple/list of subsystem indices to keep (0-based)
-    """
-    keep = tuple(keep)
-    n = len(dims)
-    perm = list(keep) + [i for i in range(n) if i not in keep]
-    d_keep = int(np.prod([dims[i] for i in keep]))
-    d_drop = int(np.prod([dims[i] for i in range(n) if i not in keep]))
-    rho_resh = rho.reshape([*dims, *dims])
-    order = perm + [i+n for i in perm]
-    rho_perm = np.transpose(rho_resh, axes=order)
-    rho_perm = rho_perm.reshape(d_keep, d_drop, d_keep, d_drop)
-    return np.einsum('ijik->jk', rho_perm).reshape(d_keep, d_keep)
-
-def dephase_in_energy_basis(rho, H, tol=1e-12):
-    e, U = eigh((H + dagger(H))/2.0)
-    rho_e = dagger(U) @ rho @ U
-    rho_e = np.diag(np.diag(rho_e))
-    return U @ rho_e @ dagger(U)
-
-def gibbs_state(H, beta):
-    # gamma = e^{-beta H}/Z
-    e, U = eigh((H + dagger(H))/2.0)
-    e = np.real(e)
-    g = np.exp(-beta * e)
-    Z = np.sum(g)
-    G = U @ np.diag(g/Z) @ dagger(U)
-    return (G + dagger(G))/2.0
-
-def choi_identity(d):
-    """Choi representation of identity channel on d-dim space."""
-    v = np.eye(d).reshape(-1, 1, order='F')
-    return v @ v.conj().T
-
-# ---------- Mutual information and coherence ----------
+    # D(rho||sigma) = Tr rho (log rho - log sigma)
+    rho = 0.5 * (rho + dagger(rho))
+    sigma = 0.5 * (sigma + dagger(sigma))
+    wr, Ur = eigh(rho)
+    ws, Us = eigh(sigma)
+    wr = np.real(wr); ws = np.real(ws)
+    wr[wr < tol] = tol
+    ws[ws < tol] = tol
+    log_rho = Ur @ np.diag(np.log(wr)) @ dagger(Ur)
+    log_sig = Us @ np.diag(np.log(ws)) @ dagger(Us)
+    return float(np.real(np.trace(rho @ (log_rho - log_sig))))
 
 def mutual_information(rho, dims, tol=1e-12):
-    S_AB = von_neumann_entropy(rho, tol=tol)
-    rho_A = partial_trace(rho, dims, keep=[0], tol=tol)
-    rho_B = partial_trace(rho, dims, keep=[1], tol=tol)
+    rhoA = partial_trace(rho, dims, keep=[0], tol=tol)
+    rhoB = partial_trace(rho, dims, keep=[1], tol=tol)
     return (
-        von_neumann_entropy(rho_A, tol=tol)
-        + von_neumann_entropy(rho_B, tol=tol)
-        - S_AB
+        von_neumann_entropy(rhoA, tol=tol)
+        + von_neumann_entropy(rhoB, tol=tol)
+        - von_neumann_entropy(rho, tol=tol)
     )
 
 def relative_entropy_of_coherence(rho, H, tol=1e-12):
-    rho_deph = dephase_in_energy_basis(rho, H, tol=tol)
+    # coherence wrt energy eigenbasis: S(Δ[rho]) - S(rho)
+    w, U = eigh((H + dagger(H)) / 2.0)
+    rho_e = dagger(U) @ rho @ U
+    rho_deph = np.diag(np.diag(rho_e))
+    rho_deph = U @ rho_deph @ dagger(U)
     return von_neumann_entropy(rho_deph, tol=tol) - von_neumann_entropy(rho, tol=tol)
+
+def choi_identity(d):
+    # Choi of identity channel in column-stacking convention: sum_{ij} |i><j| ⊗ |i><j|
+    J = np.zeros((d*d, d*d), dtype=complex)
+    for i in range(d):
+        for j in range(d):
+            eij = np.zeros((d, d), dtype=complex)
+            eij[i, j] = 1.0
+            J += np.kron(eij, eij)
+    return J
 
 # ==========================================
 # Core class: LTSDPSystem
@@ -119,14 +100,13 @@ class LTSDPSystem:
     """
     Core SDP environment for locally thermal (LT) and Gibbs-preserving (GP) analysis.
 
-    Handles:
-      - system definition (H_A, H_Ap, beta),
-      - Gibbs states gammaA, gammaAp,
-      - LT membership checks,
-      - monotones (D, I, coherence),
-      - global and local GP feasibility SDPs,
-      - support-function SDP for extremal LT states,
-      - projection to (classical) LT set via trace-distance SDP.
+    This class provides:
+      - LT membership checks and thermodynamic monotones
+      - Projection to LT (trace-distance)
+      - Extremal LT samplers
+      - Global GP channel feasibility (Choi SDP)
+      - Local GP (two-step) heuristic feasibility and residual scores
+      - Global GP channel extraction (returns a concrete Choi matrix)
     """
 
     def __init__(
@@ -134,17 +114,18 @@ class LTSDPSystem:
         H_A,
         H_Ap,
         beta,
-        solver='SCS',
+        solver="SCS",
         tol=1e-7,
         eps_eq_global=1e-8,
-        eps_eq_local=1e-6
+        eps_eq_local=1e-6,
+        eps_gibbs=1e-8,
     ):
         self.H_A = np.array(H_A, dtype=complex)
         self.H_Ap = np.array(H_Ap, dtype=complex)
         self.beta = float(beta)
 
-        self.dA = self.H_A.shape[0]
-        self.dAp = self.H_Ap.shape[0]
+        self.dA = int(self.H_A.shape[0])
+        self.dAp = int(self.H_Ap.shape[0])
         self.dims = (self.dA, self.dAp)
 
         self.gammaA = gibbs_state(self.H_A, self.beta)
@@ -152,35 +133,40 @@ class LTSDPSystem:
 
         self.solver_default = solver
         self.tol_default = tol
+
+        # Mapping tolerances (tau -> tau')
         self.eps_eq_global = eps_eq_global
         self.eps_eq_local = eps_eq_local
+
+        # Gibbs-preserving tolerance (gamma -> gamma)
+        self.eps_gibbs = eps_gibbs
 
     # --------- Basic LT stuff ---------
 
     def lt_membership(self, rho, tol=1e-8):
         dA, dAp = self.dims
-        A  = partial_trace(rho, self.dims, keep=[0], tol=tol)
+        A = partial_trace(rho, self.dims, keep=[0], tol=tol)
         Ap = partial_trace(rho, self.dims, keep=[1], tol=tol)
-        okA  = np.allclose(A,  self.gammaA,  atol=tol)
+        okA = np.allclose(A, self.gammaA, atol=tol)
         okAp = np.allclose(Ap, self.gammaAp, atol=tol)
         return okA and okAp, okA, okAp, A, Ap
 
     def monotones(self, rho, tol=1e-12):
         GAxGAp = kron(self.gammaA, self.gammaAp)
-        D_rho  = relative_entropy(rho, GAxGAp, tol=tol)
-        I_rho  = mutual_information(rho, self.dims, tol=tol)
-        rho_A  = partial_trace(rho, self.dims, keep=[0], tol=tol)
+        D_rho = relative_entropy(rho, GAxGAp, tol=tol)
+        I_rho = mutual_information(rho, self.dims, tol=tol)
+        rho_A = partial_trace(rho, self.dims, keep=[0], tol=tol)
         rho_Ap = partial_trace(rho, self.dims, keep=[1], tol=tol)
-        C_A    = relative_entropy_of_coherence(rho_A,  self.H_A,  tol=tol)
-        C_Ap   = relative_entropy_of_coherence(rho_Ap, self.H_Ap, tol=tol)
+        C_A = relative_entropy_of_coherence(rho_A, self.H_A, tol=tol)
+        C_Ap = relative_entropy_of_coherence(rho_Ap, self.H_Ap, tol=tol)
         return D_rho, I_rho, C_A, C_Ap
 
     # --------- Internal helpers for GP SDPs ---------
 
     def _select_solver(self, solver, verbose=False):
         solver_actual = self.solver_default if solver is None else solver
-        if solver_actual.upper() == 'AUTO':
-            for s in ['MOSEK', 'COSMO', 'SCS']:
+        if str(solver_actual).upper() == "AUTO":
+            for s in ["MOSEK", "COSMO", "SCS"]:
                 if s in cp.installed_solvers():
                     solver_actual = s
                     break
@@ -188,7 +174,185 @@ class LTSDPSystem:
             print(f"Using solver: {solver_actual}")
         return solver_actual
 
-    # ---- Global GP: Choi-based feasibility ----
+    @staticmethod
+    def _scs_kwargs(tol: float, verbose: bool):
+        return {
+            "eps": tol,
+            "max_iters": 200000,
+            "alpha": 1.5,
+            "scale": 5.0,
+            "normalize": True,
+            "use_indirect": False,
+            "verbose": verbose,
+        }
+
+    # ----------------------------
+    # Choi helpers (cvx + numpy)
+    # ----------------------------
+
+    @staticmethod
+    def _choi_tp_constraints(J_var, d_in: int, d_out: int):
+        """
+        Trace-preserving constraint in Choi form:
+          Tr_out(J) = I_in
+        """
+        I_in = np.eye(d_in)
+        rows = []
+        for m in range(d_in):
+            r = []
+            for n in range(d_in):
+                s = 0
+                for mu in range(d_out):
+                    s += J_var[mu * d_in + m, mu * d_in + n]
+                r.append(s)
+            rows.append(r)
+        Tr_out = cp.vstack([cp.hstack(r) for r in rows])
+        return [Tr_out == I_in]
+
+    @staticmethod
+    def _choi_apply_cvx(J_var, X_const, d_in: int, d_out: int):
+        """
+        Apply Choi matrix J_var to a constant operator X_const.
+
+        For Choi J of shape (d_out*d_in, d_out*d_in), the action is:
+          Φ(X) = Tr_in[J (I_out ⊗ X^T)]
+        Implemented via stride-block extraction (works for small dims).
+        """
+        XT = X_const.T
+        blocks = []
+        for i in range(d_in):
+            acc = 0
+            for j in range(d_in):
+                block = J_var[i::d_in, j::d_in]  # each block is d_out x d_out
+                acc += XT[i, j] * block
+            blocks.append(acc)
+        Y = 0
+        for b in blocks:
+            Y += b
+        return Y
+
+    @staticmethod
+    def choi_apply_numpy(J: np.ndarray, X: np.ndarray, d_in: int, d_out: int):
+        """
+        Numpy version of Choi application (same as _choi_apply_cvx).
+        """
+        XT = X.T
+        Y = np.zeros((d_out, d_out), dtype=complex)
+        for i in range(d_in):
+            acc = np.zeros((d_out, d_out), dtype=complex)
+            for j in range(d_in):
+                block = J[i::d_in, j::d_in]
+                acc += XT[i, j] * block
+            Y += acc
+        return Y
+
+    @staticmethod
+    def kraus_from_choi(J: np.ndarray, d_in: int, d_out: int, tol: float = 1e-12):
+        """
+        Extract Kraus operators {K_k} from a Choi matrix J via eigendecomposition:
+          J = Σ_k λ_k |v_k⟩⟨v_k|,  K_k = sqrt(λ_k) reshape(v_k, (d_out,d_in), order='F')
+        """
+        Jh = 0.5 * (J + J.conj().T)
+        w, V = eigh(Jh)
+        kraus = []
+        for lam, v in zip(w, V.T):
+            lam = float(np.real(lam))
+            if lam <= tol:
+                continue
+            K = np.sqrt(lam) * v.reshape((d_out, d_in), order="F")
+            kraus.append(K)
+        return kraus
+
+    # ==========================================
+    # Global GP (channel extraction + feasibility)
+    # ==========================================
+
+    def find_global_gp_channel(
+        self,
+        tau,
+        tau_p,
+        solver=None,
+        tol=None,
+        eps_gibbs=None,
+        verbose=False,
+    ):
+        """
+        Solve for a *concrete* global Gibbs-preserving CPTP map Φ (via Choi J)
+        that best approximates tau -> tau_p:
+
+            minimise  || Φ(tau) - tau_p ||_F
+            subject to  J ⪰ 0, Tr_out(J)=I,  ||Φ(γ⊗γ) - (γ⊗γ)||_F ≤ eps_gibbs
+
+        Returns a dict with:
+          - status
+          - J (Choi matrix) if available
+          - map_residual (optimal value)
+          - gibbs_residual (computed a posteriori if J found)
+        """
+        dA, dAp = self.dims
+        d_in = d_out = dA * dAp
+
+        tau_clean = 0.5 * (tau + tau.conj().T)
+        tau_p_clean = 0.5 * (tau_p + tau_p.conj().T)
+
+        eps_g = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
+        solver_actual = self._select_solver(solver, verbose)
+        tol = self.tol_default if tol is None else float(tol)
+
+        if norm(tau_clean - tau_p_clean, "fro") <= 1e-12:
+            J_id = choi_identity(d_in)
+            return {
+                "status": "identity_case",
+                "solver": solver_actual,
+                "J": J_id,
+                "map_residual": 0.0,
+                "gibbs_residual": 0.0,
+            }
+
+        scs_kwargs = self._scs_kwargs(tol, verbose) if str(solver_actual).upper() == "SCS" else {}
+
+        J = cp.Variable((d_out * d_in, d_out * d_in), complex=True, name="J")
+
+        GAxGAp = kron(self.gammaA, self.gammaAp)
+        GAxGAp_mat = 0.5 * (GAxGAp + GAxGAp.conj().T)
+
+        constraints = [J >> 0]
+        constraints += self._choi_tp_constraints(J, d_in=d_in, d_out=d_out)
+
+        Y_gp = self._choi_apply_cvx(J, GAxGAp_mat, d_in=d_in, d_out=d_out)
+        constraints += [cp.norm(Y_gp - GAxGAp_mat, "fro") <= eps_g]
+
+        Y_conv = self._choi_apply_cvx(J, tau_clean, d_in=d_in, d_out=d_out)
+        objective = cp.Minimize(cp.norm(Y_conv - tau_p_clean, "fro"))
+
+        prob = cp.Problem(objective, constraints)
+        try:
+            prob.solve(solver=solver_actual, **scs_kwargs)
+        except Exception as e:
+            if verbose:
+                print(f"Global GP solver error: {e}")
+            return {
+                "status": f"error: {str(e)}",
+                "solver": solver_actual,
+                "J": None,
+                "map_residual": np.inf,
+                "gibbs_residual": np.inf,
+            }
+
+        J_val = None if J.value is None else 0.5 * (J.value + J.value.conj().T)
+
+        gibbs_res = np.inf
+        if J_val is not None:
+            Yg = self.choi_apply_numpy(J_val, GAxGAp_mat, d_in=d_in, d_out=d_out)
+            gibbs_res = float(norm(Yg - GAxGAp_mat, "fro"))
+
+        return {
+            "status": prob.status,
+            "solver": solver_actual,
+            "J": J_val,
+            "map_residual": float(prob.value) if prob.value is not None else np.inf,
+            "gibbs_residual": gibbs_res,
+        }
 
     def check_global_gp_feasible(
         self,
@@ -196,98 +360,51 @@ class LTSDPSystem:
         tau_p,
         solver=None,
         tol=None,
-        eps_eq=None,
-        verbose=False
+        eps_eq=None,      # legacy name
+        eps_map=None,     # preferred name
+        eps_gibbs=None,
+        verbose=False,
+        return_details=False,
     ):
         """
-        Check existence of global Gibbs-preserving channel G with:
-          G(γ⊗γ) = γ⊗γ (approx),
-          G(tau)  = tau_p (approx).
+        Feasibility check for existence of global GP CPTP Φ such that:
+          ||Φ(γ⊗γ)-(γ⊗γ)||_F ≤ eps_gibbs
+          ||Φ(tau) - tau_p||_F ≤ eps_map
+
+        Returns:
+          - (feasible: bool, status: str) by default
+          - (feasible: bool, status: str, details: dict) if return_details=True
         """
-        dA, dAp = self.dims
-        d_in = d_out = dA * dAp
+        eps_map_val = self.eps_eq_global if (eps_eq is None and eps_map is None) else float(eps_map if eps_map is not None else eps_eq)
+        eps_g_val = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
 
-        if norm(tau - tau_p, 'fro') <= 1e-10:
-            return True, "identity_case"
-
-        solver_actual = self._select_solver(solver, verbose)
-        tol = self.tol_default if tol is None else tol
-        eps_eq = self.eps_eq_global if eps_eq is None else eps_eq
-
-        if solver_actual.upper() == "SCS":
-            scs_kwargs = {
-                "eps": tol,
-                "max_iters": 200000,
-                "alpha": 1.5,
-                "scale": 5.0,
-                "normalize": True,
-                "use_indirect": False,
-                "verbose": verbose,
-            }
-        else:
-            scs_kwargs = {}
-
-        J = cp.Variable((d_out * d_in, d_out * d_in), complex=True, name='J')  # Choi
-
-        I_in = np.eye(d_in)
-        GAxGAp = kron(self.gammaA, self.gammaAp)
-
-        def choi_TP_constraints(J_var):
-            rows = []
-            for m in range(d_in):
-                r = []
-                for n in range(d_in):
-                    s = 0
-                    for mu in range(d_out):
-                        s += J_var[mu * d_in + m, mu * d_in + n]
-                    r.append(s)
-                rows.append(r)
-            Tr_out = cp.vstack([cp.hstack(r) for r in rows])
-            return [Tr_out == I_in]
-
-        def choi_apply(J_var, X):
-            XT = X.T
-            blocks = []
-            for i in range(d_in):
-                acc = 0
-                for j in range(d_in):
-                    block = J_var[i::d_in, j::d_in]
-                    acc += XT[i, j] * block
-                blocks.append(acc)
-            Y = 0
-            for b in blocks:
-                Y += b
-            return Y
-
-        constraints = [J >> 0]
-        constraints += choi_TP_constraints(J)
-
-        GAxGAp_mat = 0.5 * (GAxGAp + GAxGAp.conj().T)
-        Y_gp = choi_apply(J, GAxGAp_mat)
-        constraints += [cp.norm(Y_gp - GAxGAp_mat, 'fro') <= eps_eq]
-
-        tau_clean   = 0.5 * (tau   + tau.conj().T)
-        tau_p_clean = 0.5 * (tau_p + tau_p.conj().T)
-        Y_conv = choi_apply(J, tau_clean)
-        constraints += [cp.norm(Y_conv - tau_p_clean, 'fro') <= eps_eq]
-
-        prob = cp.Problem(cp.Minimize(0), constraints)
-        try:
-            prob.solve(solver=solver_actual, **scs_kwargs)
-        except Exception as e:
-            if verbose:
-                print(f"Global GP solver error: {e}")
-            return False, f"error: {str(e)}"
-
-        feasible = (
-            prob.status in ['optimal', 'optimal_inaccurate', 'infeasible_inaccurate'] 
-            and prob.status != 'infeasible'
+        details = self.find_global_gp_channel(
+            tau, tau_p,
+            solver=solver,
+            tol=tol,
+            eps_gibbs=eps_g_val,
+            verbose=verbose,
         )
-        if verbose:
-            print(f"Global GP status: {prob.status}, feasible: {feasible}")
-        return feasible, prob.status
 
-    # ---- Local GP: two-step feasibility (A then A') ----
+        status = details.get("status", "unknown")
+        map_res = float(details.get("map_residual", np.inf))
+        gibbs_res = float(details.get("gibbs_residual", np.inf))
+
+        # If solver reported infeasible, treat as infeasible regardless of residual.
+        if str(status).lower().startswith("infeasible"):
+            feasible = False
+        else:
+            feasible = (map_res <= eps_map_val + 1e-12) and (gibbs_res <= eps_g_val + 1e-8)
+
+        status_str = f"{status} (map_res={map_res:.3e}, gibbs_res={gibbs_res:.3e})"
+
+        if return_details:
+            return feasible, status_str, details
+        return feasible, status_str
+
+    # ==========================================
+    # Local GP (two-step heuristic + residual)
+    # ==========================================
 
     def check_local_gp_feasible(
         self,
@@ -295,36 +412,38 @@ class LTSDPSystem:
         tau_p,
         solver=None,
         tol=None,
-        eps_eq=None,
+        eps_eq=None,      # legacy name
+        eps_map=None,     # preferred name
+        eps_gibbs=None,
         verbose=False,
-        omega_hint=None
+        omega_hint=None,
+        return_details=False,
     ):
         """
         Two-step local GP test:
-          Step 1: G_A on A,
-          Step 2: G_A' on A'.
+
+          Step 1: Find a GP channel on A giving intermediate omega = (G_A ⊗ id)(tau).
+          Step 2: Find a GP channel on A' that best maps omega -> tau_p.
+
+        The returned residual from Step 2 is a useful quantitative "gap" score.
         """
         dA, dAp = self.dims
 
-        if norm(tau - tau_p, 'fro') <= 1e-10:
+        tau_clean = 0.5 * (tau + tau.conj().T)
+        tau_p_clean = 0.5 * (tau_p + tau_p.conj().T)
+
+        if norm(tau_clean - tau_p_clean, "fro") <= 1e-12:
+            if return_details:
+                return True, "identity_case", {"residual": 0.0, "J_A": None, "J_Ap": None, "omega": tau_clean}
             return True, "identity_case"
 
         solver_actual = self._select_solver(solver, verbose)
-        tol = self.tol_default if tol is None else tol
-        eps_eq = self.eps_eq_local if eps_eq is None else eps_eq
+        tol = self.tol_default if tol is None else float(tol)
 
-        if solver_actual.upper() == "SCS":
-            scs_kwargs = {
-                "eps": tol,
-                "max_iters": 200000,
-                "alpha": 1.5,
-                "scale": 5.0,
-                "normalize": True,
-                "use_indirect": False,
-                "verbose": verbose,
-            }
-        else:
-            scs_kwargs = {}
+        eps_map_val = self.eps_eq_local if (eps_eq is None and eps_map is None) else float(eps_map if eps_map is not None else eps_eq)
+        eps_g_val = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
+
+        scs_kwargs = self._scs_kwargs(tol, verbose) if str(solver_actual).upper() == "SCS" else {}
 
         def choi_apply_local(J_var, X_const, d):
             XT = X_const.T
@@ -338,8 +457,8 @@ class LTSDPSystem:
             return Y
 
         # -------- STEP 1: channel on A --------
-        JA   = cp.Variable((dA*dA, dA*dA), complex=True, name='J_A')
-        omega = cp.Variable((dA*dAp, dA*dAp), complex=True, name='omega')
+        JA = cp.Variable((dA * dA, dA * dA), complex=True, name="J_A")
+        omega = cp.Variable((dA * dAp, dA * dAp), complex=True, name="omega")
         I_A = np.eye(dA)
 
         try:
@@ -354,34 +473,29 @@ class LTSDPSystem:
             for n in range(dA):
                 s = 0
                 for mu in range(dA):
-                    s += JA[mu*dA + m, mu*dA + n]
+                    s += JA[mu * dA + m, mu * dA + n]
                 r.append(s)
             rows.append(r)
         cons1 += [cp.vstack([cp.hstack(r) for r in rows]) == I_A]
-        cons1 += [
-            cp.norm(
-                choi_apply_local(JA, self.gammaA, dA) - self.gammaA,
-                'fro'
-            ) <= eps_eq
-        ]
+        cons1 += [cp.norm(choi_apply_local(JA, self.gammaA, dA) - self.gammaA, "fro") <= eps_g_val]
 
-        tau_blocks = tau.reshape(dA, dAp, dA, dAp)
+        tau_blocks = tau_clean.reshape(dA, dAp, dA, dAp)
         omega_expr = 0
         for i in range(dA):
             for j in range(dA):
-                Eij = np.zeros((dA, dA), dtype=complex); Eij[i, j] = 1.0
+                Eij = np.zeros((dA, dA), dtype=complex)
+                Eij[i, j] = 1.0
                 GA_Eij = choi_apply_local(JA, Eij, dA)
-                Tij    = tau_blocks[i, :, j, :]
+                Tij = tau_blocks[i, :, j, :]
                 omega_expr += cp.kron(GA_Eij, Tij)
 
         cons1 += [omega >> 0, cp.trace(omega) == 1, omega == omega_expr]
 
         if omega_hint is not None:
             omega_target = 0.5 * (omega_hint + omega_hint.conj().T)
-            obj1 = cp.Minimize(cp.norm(omega - omega_target, 'fro'))
+            obj1 = cp.Minimize(cp.norm(omega - omega_target, "fro"))
         else:
-            tau_target = 0.5 * (tau + tau.conj().T)
-            obj1 = cp.Minimize(cp.norm(omega - tau_target, 'fro'))
+            obj1 = cp.Minimize(cp.norm(omega - tau_clean, "fro"))
 
         prob1 = cp.Problem(obj1, cons1)
         try:
@@ -389,17 +503,21 @@ class LTSDPSystem:
         except Exception as e:
             if verbose:
                 print(f"LGP step-1 solver error: {e}")
+            if return_details:
+                return False, f"LGP step-1 error: {str(e)}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None}
             return False, f"LGP step-1 error: {str(e)}"
 
-        if prob1.status not in ['optimal', 'optimal_inaccurate']:
+        if prob1.status not in ["optimal", "optimal_inaccurate"]:
             if verbose:
                 print(f"LGP step-1 status: {prob1.status}")
+            if return_details:
+                return False, f"LGP step-1 {prob1.status}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None}
             return False, f"LGP step-1 {prob1.status}"
 
         omega_val = 0.5 * (omega.value + omega.value.conj().T)
 
         # -------- STEP 2: channel on A' --------
-        JAp  = cp.Variable((dAp*dAp, dAp*dAp), complex=True, name='J_Ap')
+        JAp = cp.Variable((dAp * dAp, dAp * dAp), complex=True, name="J_Ap")
         I_Ap = np.eye(dAp)
 
         try:
@@ -414,28 +532,23 @@ class LTSDPSystem:
             for n in range(dAp):
                 s = 0
                 for mu in range(dAp):
-                    s += JAp[mu*dAp + m, mu*dAp + n]
+                    s += JAp[mu * dAp + m, mu * dAp + n]
                 r.append(s)
             rows.append(r)
         cons2 += [cp.vstack([cp.hstack(r) for r in rows]) == I_Ap]
-        cons2 += [
-            cp.norm(
-                choi_apply_local(JAp, self.gammaAp, dAp) - self.gammaAp,
-                'fro'
-            ) <= eps_eq
-        ]
+        cons2 += [cp.norm(choi_apply_local(JAp, self.gammaAp, dAp) - self.gammaAp, "fro") <= eps_g_val]
 
         omega_blocks = omega_val.reshape(dA, dAp, dA, dAp)
         tau_p_expr = 0
         for a in range(dAp):
             for b in range(dAp):
-                Eab    = np.zeros((dAp, dAp), dtype=complex); Eab[a, b] = 1.0
+                Eab = np.zeros((dAp, dAp), dtype=complex)
+                Eab[a, b] = 1.0
                 GAp_Eab = choi_apply_local(JAp, Eab, dAp)
-                Xab     = omega_blocks[:, a, :, b]
+                Xab = omega_blocks[:, a, :, b]
                 tau_p_expr += cp.kron(Xab, GAp_Eab)
 
-        tau_p_target = 0.5 * (tau_p + tau_p.conj().T)
-        obj2 = cp.Minimize(cp.norm(tau_p_expr - tau_p_target, 'fro'))
+        obj2 = cp.Minimize(cp.norm(tau_p_expr - tau_p_clean, "fro"))
         prob2 = cp.Problem(obj2, cons2)
 
         try:
@@ -443,18 +556,34 @@ class LTSDPSystem:
         except Exception as e:
             if verbose:
                 print(f"LGP step-2 solver error: {e}")
+            if return_details:
+                return False, f"LGP step-2 error: {str(e)}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": omega_val}
             return False, f"LGP step-2 error: {str(e)}"
 
-        if prob2.status not in ['optimal', 'optimal_inaccurate']:
+        if prob2.status not in ["optimal", "optimal_inaccurate"]:
             if verbose:
                 print(f"LGP step-2 status: {prob2.status}")
+            if return_details:
+                return False, f"LGP step-2 {prob2.status}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": omega_val}
             return False, f"LGP step-2 {prob2.status}"
 
-        res = prob2.value if prob2.value is not None else np.inf
-        feasible = (res <= eps_eq)
-        if verbose:
-            print(f"LGP residual: {res:.3e}, threshold: {eps_eq}")
-        return feasible, (f"residual={res:.3e}" if res is not None else "optimal")
+        res = float(prob2.value) if prob2.value is not None else np.inf
+        feasible = res <= eps_map_val + 1e-12
+
+        status = f"{prob2.status} (residual={res:.3e}, threshold={eps_map_val:.3e})"
+        details = {
+            "residual": res,
+            "threshold": eps_map_val,
+            "J_A": None if JA.value is None else 0.5 * (JA.value + JA.value.conj().T),
+            "J_Ap": None if JAp.value is None else 0.5 * (JAp.value + JAp.value.conj().T),
+            "omega": omega_val,
+            "status_step1": prob1.status,
+            "status_step2": prob2.status,
+        }
+
+        if return_details:
+            return feasible, status, details
+        return feasible, status
 
     # --------- Support function: extremal LT state ---------
 
@@ -699,103 +828,3 @@ class LTSDPSystem:
             }
         }
         return report
-
-# ==========================================
-# Example driver / tests (similar to yours)
-# ==========================================
-
-if __name__ == "__main__":
-    SEED = 42
-    SOLVER = 'MOSEK'    # 'MOSEK', 'COSMO', 'SCS', or 'AUTO'
-    TOL = 1e-8
-    BETA = 1.0
-    TEST_CASE = 'all'
-    VERBOSE = False
-
-    np.random.seed(SEED)
-
-    dA = dAp = 2
-    H_A  = np.diag([0.0, 1.0])
-    H_Ap = np.diag([0.0, 1.5])
-
-    system = LTSDPSystem(H_A, H_Ap, beta=BETA, solver=SOLVER, tol=TOL)
-
-    def rand_state(d):
-        X = np.random.randn(d, d) + 1j*np.random.randn(d, d)
-        rho = X @ dagger(X)
-        return rho / np.trace(rho)
-
-    gammaA  = system.gammaA
-    gammaAp = system.gammaAp
-
-    def local_gp_A(rho, lam):
-        """Simple local GP replacer on A."""
-        rho_Ap = partial_trace(rho, (dA, dAp), keep=[1])
-        out = (1 - lam) * rho + lam * np.kron(gammaA, rho_Ap)
-        return 0.5 * (out + out.conj().T)
-
-    def local_gp_Ap(rho, lam):
-        """Simple local GP replacer on A'."""
-        rho_A = partial_trace(rho, (dA, dAp), keep=[0])
-        out = (1 - lam) * rho + lam * np.kron(rho_A, gammaAp)
-        return 0.5 * (out + out.conj().T)
-
-    def run_test_t0():
-        print("\n=== Test T0: Identity Case ===")
-        tau = rand_state(dA*dAp)
-        tau_p = tau.copy()
-        report = system.analyze_convertibility(
-            tau, tau_p, solver=SOLVER, tol=TOL, verbose=VERBOSE
-        )
-        print(f"Global GP: {report['feasibility']['Global_GP']}")
-        print(f"Local GP:  {report['feasibility']['Local_GP']}")
-        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> "
-              f"{report['monotones']['D_taup_vs_gamma']:.4f}")
-        print(f"I: {report['monotones']['I_tau']:.4f} -> "
-              f"{report['monotones']['I_taup']:.4f}")
-        return report
-
-    def run_test_t1():
-        print("\n=== Test T1: Global Thermal Mix ===")
-        tau = rand_state(dA*dAp)
-        lam = 0.3
-        GAxGAp = kron(gammaA, gammaAp)
-        tau_p = (1 - lam) * tau + lam * GAxGAp
-        tau_p = 0.5 * (tau_p + tau_p.conj().T)
-        report = system.analyze_convertibility(
-            tau, tau_p, solver=SOLVER, tol=TOL, verbose=VERBOSE
-        )
-        print(f"Global GP: {report['feasibility']['Global_GP']}")
-        print(f"Local GP:  {report['feasibility']['Local_GP']}")
-        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> "
-              f"{report['monotones']['D_taup_vs_gamma']:.4f}")
-        print(f"I: {report['monotones']['I_tau']:.4f} -> "
-              f"{report['monotones']['I_taup']:.4f}")
-        return report
-
-    def run_test_t2():
-        print("\n=== Test T2: Guaranteed LGP (with omega_hint) ===")
-        tau = rand_state(dA*dAp)
-        lamA, lamAp = 0.4, 0.5
-        tau1  = local_gp_A(tau, lamA)
-        tau_p = local_gp_Ap(tau1, lamAp)
-        report = system.analyze_convertibility(
-            tau, tau_p, solver=SOLVER, tol=TOL,
-            verbose=VERBOSE, omega_hint=tau1
-        )
-        print(f"Global GP: {report['feasibility']['Global_GP']}")
-        print(f"Local GP:  {report['feasibility']['Local_GP']}")
-        print(f"D: {report['monotones']['D_tau_vs_gamma']:.4f} -> "
-              f"{report['monotones']['D_taup_vs_gamma']:.4f}")
-        print(f"I: {report['monotones']['I_tau']:.4f} -> "
-              f"{report['monotones']['I_taup']:.4f}")
-        return report
-
-    if TEST_CASE in ['T0', 'all']:
-        run_test_t0()
-    if TEST_CASE in ['T1', 'all']:
-        run_test_t1()
-    if TEST_CASE in ['T2', 'all']:
-        run_test_t2()
-
-    print("\nTests complete!")
