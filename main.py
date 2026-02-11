@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Qt5Agg")
 from PyQt5 import QtWidgets
 import matplotlib.pyplot as plt
+import json
 
 from sdp_system import LTSDPSystem, dagger
 from sdp_analysis import LTAnalyzer
@@ -151,6 +152,353 @@ def embed_state_3d(system, rho, rng=None):
     coords = [float(np.real(np.trace(rho @ O))) for O in Os]
     return np.array(coords)
 
+def plot_lt_family_scan(p_list, observables, title_prefix, filename_prefix):
+    """Save a compact set of plots for an LT family scan (I, ||C||_1/2, ||C||_F, T singular values)."""
+    import matplotlib.pyplot as plt
+
+    p_list = np.array(p_list, dtype=float)
+
+    # I(p)
+    fig = plt.figure()
+    plt.plot(p_list, observables["I"], marker="o", linestyle="-")
+    plt.xlabel("p")
+    plt.ylabel("I(A:B)")
+    plt.title(f"{title_prefix} — mutual information")
+    save_plot(fig, f"{filename_prefix}_I_vs_p.png")
+    plt.close(fig)
+
+    # ||C||_1/2 and ||C||_F
+    fig = plt.figure()
+    plt.plot(p_list, observables["C_trace_dist"], marker="o", linestyle="-", label="0.5||C||_1")
+    plt.plot(p_list, observables["C_fro"], marker="s", linestyle="--", label="||C||_F")
+    plt.xlabel("p")
+    plt.ylabel("correlation size")
+    plt.title(f"{title_prefix} — correlation norms")
+    plt.legend()
+    save_plot(fig, f"{filename_prefix}_C_norms_vs_p.png")
+    plt.close(fig)
+
+    # T singular values (if present)
+    Ts = observables.get("T_svals", None)
+    if Ts and Ts[0] is not None:
+        s0 = np.array([s[0] for s in Ts], dtype=float)
+        s1 = np.array([s[1] for s in Ts], dtype=float)
+        s2 = np.array([s[2] for s in Ts], dtype=float)
+        fig = plt.figure()
+        plt.plot(p_list, s0, marker="o", linestyle="-", label="s1")
+        plt.plot(p_list, s1, marker="s", linestyle="--", label="s2")
+        plt.plot(p_list, s2, marker="^", linestyle=":", label="s3")
+        plt.xlabel("p")
+        plt.ylabel("svals(T)")
+        plt.title(f"{title_prefix} — singular values of correlation tensor T")
+        plt.legend()
+        save_plot(fig, f"{filename_prefix}_T_svals_vs_p.png")
+        plt.close(fig)
+# =========================
+# Structured LT family experiments (no GUI changes)
+# =========================
+
+def _invsqrt_psd(mat, tol=1e-12):
+    """Hermitian PSD inverse square root via eigendecomposition."""
+    H = 0.5 * (mat + mat.conj().T)
+    w, U = np.linalg.eigh(H)
+    w = np.real(w)
+    w[w < tol] = tol
+    return U @ np.diag(w ** (-0.5)) @ dagger(U)
+
+def _whiten_C(system, C0, tol=1e-12):
+    """C~ = (γ^{-1/2}⊗γ'^{-1/2}) C0 (γ^{-1/2}⊗γ'^{-1/2})."""
+    GinvA = _invsqrt_psd(system.gammaA, tol=tol)
+    GinvB = _invsqrt_psd(system.gammaAp, tol=tol)
+    W = np.kron(GinvA, GinvB)
+    C0h = 0.5 * (C0 + C0.conj().T)
+    Ct = W @ C0h @ W
+    return 0.5 * (Ct + Ct.conj().T)
+
+def _lt_ray_p_bounds(system, C0, tol=1e-12):
+    """
+    Analytic PSD interval for ρ(p)=γ⊗γ + p C0 from eigenvalues of C~.
+    Returns (p_min, p_max) such that ρ(p)⪰0 for p in [p_min, p_max].
+    """
+    Ct = _whiten_C(system, C0, tol=tol)
+    lam = np.linalg.eigvalsh(0.5 * (Ct + Ct.conj().T))
+    lam = np.real(lam)
+
+    p_min = -np.inf
+    p_max = +np.inf
+    for x in lam:
+        if x > tol:
+            p_min = max(p_min, -1.0 / x)
+        elif x < -tol:
+            p_max = min(p_max, -1.0 / x)
+
+    # In the (rare) unbounded case, clamp to keep scans sane.
+    if not np.isfinite(p_min):
+        p_min = -1e6
+    if not np.isfinite(p_max):
+        p_max = +1e6
+    return float(p_min), float(p_max)
+
+def _C0_from_pauli_pair(label):
+    """
+    C0 for dims=(2,2): (1/4) σ_i⊗σ_j where label in {XX,YY,ZZ,XY,XZ,YZ,...}.
+    This is traceless and has zero marginals.
+    """
+    sx, sy, sz = paulis()
+    P = {"X": sx, "Y": sy, "Z": sz}
+    lab = str(label).strip().upper()
+    if len(lab) != 2 or lab[0] not in P or lab[1] not in P:
+        raise ValueError("label must be one of XX, YY, ZZ, XY, XZ, YZ")
+    return 0.25 * np.kron(P[lab[0]], P[lab[1]])
+
+def _C0_from_diagT(tx, ty, tz):
+    """C0 = (1/4)(tx XX + ty YY + tz ZZ) for dims=(2,2)."""
+    sx, sy, sz = paulis()
+    XX = np.kron(sx, sx)
+    YY = np.kron(sy, sy)
+    ZZ = np.kron(sz, sz)
+    return 0.25 * (float(tx) * XX + float(ty) * YY + float(tz) * ZZ)
+
+def _lt_state_on_ray(system, C0, p):
+    """ρ(p)=γ⊗γ + p C0 (Hermitian, trace-normalized)."""
+    G = np.kron(system.gammaA, system.gammaAp)
+    rho = G + float(p) * 0.5 * (C0 + C0.conj().T)
+    rho = 0.5 * (rho + rho.conj().T)
+    tr = np.trace(rho)
+    if abs(tr) > 1e-15:
+        rho = rho / tr
+    return 0.5 * (rho + rho.conj().T)
+
+def _qubit_corr_tensor_T(system, rho):
+    """
+    T_{ij}=Tr(C σ_i⊗σ_j), i,j∈{x,y,z}, where C=rho-γ⊗γ.
+    Returns real 3x3 tensor.
+    """
+    if system.dims != (2, 2):
+        raise ValueError("Correlation tensor T implemented for dims=(2,2) only.")
+    sx, sy, sz = paulis()
+    sig = [sx, sy, sz]
+    G = np.kron(system.gammaA, system.gammaAp)
+    C = 0.5 * ((rho - G) + (rho - G).conj().T)
+
+    T = np.zeros((3, 3), dtype=float)
+    for i in range(3):
+        for j in range(3):
+            O = np.kron(sig[i], sig[j])
+            T[i, j] = float(np.real(np.trace(C @ O)))
+    return T
+
+def _structured_family_hierarchy_run(system, analyzer, spec):
+    """
+    Custom experiment:
+      - build LT family along a ray ρ(p)=γ⊗γ + p C0 (Pauli pair) OR diagT direction
+      - compute observables (I, 0.5||C||1, ||C||F, svals(T))
+      - build convertibility adjacency (global + local GP)
+      - validate monotone inequalities on feasible edges (tol=1e-8 default)
+      - compare whether componentwise svals contraction predicts local infeasibility
+    Outputs saved in ./png/.
+    """
+    if system.dims != (2, 2):
+        raise ValueError("This structured-family experiment is implemented for symmetric qubits dims=(2,2).")
+
+    family = str(spec.get("family", "ray")).strip().lower()
+    num_p = int(spec.get("num_p", spec.get("num_points", 21)))
+    include_negative = bool(spec.get("include_negative", False))
+    pair_mode = str(spec.get("pair_mode", "decreasing")).strip().lower()  # all | decreasing | adjacent
+    p_shrink = float(spec.get("p_shrink", 0.98))
+    mono_tol = float(spec.get("mono_tol", 1e-8))
+
+    # Direction C0
+    tag_parts = []
+    if family in ("ray", "ray_pauli", "pauli"):
+        label = str(spec.get("label", "XX"))
+        C0 = _C0_from_pauli_pair(label)
+        tag_parts = ["ray", label.upper()]
+    elif family in ("diagt", "diag_t", "diagt_ray"):
+        tx = float(spec.get("tx", 1.0))
+        ty = float(spec.get("ty", 0.0))
+        tz = float(spec.get("tz", 0.0))
+        C0 = _C0_from_diagT(tx, ty, tz)
+        tag_parts = ["diagT", f"{tx:g}", f"{ty:g}", f"{tz:g}"]
+    else:
+        raise ValueError("family must be 'ray' (Pauli pair) or 'diagT' (tx,ty,tz).")
+
+    # Analytic PSD bounds
+    p_min, p_max = _lt_ray_p_bounds(system, C0, tol=1e-12)
+    if not include_negative:
+        p_min = max(0.0, p_min)
+
+    # interior scan
+    p_lo = p_min * p_shrink
+    p_hi = p_max * p_shrink
+    p_list = np.linspace(p_lo, p_hi, num_p, dtype=float)
+
+    states = [_lt_state_on_ray(system, C0, float(p)) for p in p_list]
+
+    # Observables
+    I = np.zeros(num_p, dtype=float)
+    C1 = np.zeros(num_p, dtype=float)   # 0.5||C||_1
+    CF = np.zeros(num_p, dtype=float)   # ||C||_F
+    svals = np.zeros((num_p, 3), dtype=float)
+
+    for k, rho in enumerate(states):
+        Dk, Ik, _, _ = system.monotones(rho, tol=1e-12)
+        cm = system.correlation_metrics(rho, tol=1e-12)
+        I[k] = float(Ik)
+        C1[k] = float(cm["C_trace_dist"])
+        CF[k] = float(cm["C_fro"])
+        T = _qubit_corr_tensor_T(system, rho)
+        sv = np.linalg.svd(T, compute_uv=False)
+        svals[k, :] = np.sort(np.real(sv))[::-1]
+
+    # Pair selection
+    pairs = []
+    if pair_mode == "all":
+        for i in range(num_p):
+            for j in range(num_p):
+                if i != j:
+                    pairs.append((i, j))
+    elif pair_mode == "decreasing":
+        for i in range(num_p):
+            for j in range(num_p):
+                if p_list[i] > p_list[j]:
+                    pairs.append((i, j))
+    elif pair_mode == "adjacent":
+        for k in range(1, num_p):
+            # directed from higher p to lower p
+            i, j = (k, k - 1) if p_list[k] > p_list[k - 1] else (k - 1, k)
+            pairs.append((i, j))
+    else:
+        raise ValueError("pair_mode must be one of: all | decreasing | adjacent")
+
+    # Convertibility adjacency
+    A_global = np.zeros((num_p, num_p), dtype=int)
+    A_local = np.zeros((num_p, num_p), dtype=int)
+
+    for (i, j) in pairs:
+        tau = states[i]
+        tau_p = states[j]
+
+        try:
+            g_ok, g_status = system.check_global_gp_feasible(
+                tau, tau_p,
+                solver=system.solver_default,
+                tol=system.tol_default,
+                eps_map=system.eps_eq_global,
+                eps_gibbs=system.eps_gibbs,
+                verbose=False,
+            )
+            A_global[i, j] = 1 if bool(g_ok) else 0
+        except Exception:
+            A_global[i, j] = 0
+
+        try:
+            l_ok, l_status = system.check_local_gp_feasible(
+                tau, tau_p,
+                solver=system.solver_default,
+                tol=system.tol_default,
+                eps_map=system.eps_eq_local,
+                eps_gibbs=system.eps_gibbs,
+                verbose=False,
+                return_details=False,
+            )
+            A_local[i, j] = 1 if bool(l_ok) else 0
+        except Exception:
+            A_local[i, j] = 0
+
+    # Monotone validation on feasible edges (global OR local)
+    violations = []
+    for (i, j) in pairs:
+        if A_local[i, j] != 1 and A_global[i, j] != 1:
+            continue
+        ok_I = (I[i] + mono_tol >= I[j])
+        ok_C = (C1[i] + mono_tol >= C1[j])
+        ok_S = bool(np.all(svals[i, :] + mono_tol >= svals[j, :]))  # componentwise contraction
+
+        if not (ok_I and ok_C and ok_S):
+            violations.append({
+                "i": int(i), "j": int(j),
+                "p_i": float(p_list[i]), "p_j": float(p_list[j]),
+                "feasible_global": int(A_global[i, j]),
+                "feasible_local": int(A_local[i, j]),
+                "I_i": float(I[i]), "I_j": float(I[j]),
+                "C1_i": float(C1[i]), "C1_j": float(C1[j]),
+                "s_i": svals[i, :].copy(), "s_j": svals[j, :].copy(),
+                "ok_I": bool(ok_I), "ok_C": bool(ok_C), "ok_S": bool(ok_S),
+            })
+
+    # Predictor quality: pred_feasible := componentwise svals contraction
+    TP = FP = TN = FN = 0
+    for (i, j) in pairs:
+        pred = bool(np.all(svals[i, :] + mono_tol >= svals[j, :]))
+        actual = bool(A_local[i, j] == 1)
+        if pred and actual:
+            TP += 1
+        elif pred and (not actual):
+            FP += 1
+        elif (not pred) and (not actual):
+            TN += 1
+        else:
+            FN += 1
+
+    def _safe_div(a, b):
+        return float(a) / float(b) if b else float("nan")
+
+    accuracy = _safe_div(TP + TN, TP + TN + FP + FN)
+    precision = _safe_div(TP, TP + FP)
+    recall = _safe_div(TP, TP + FN)
+    specificity = _safe_div(TN, TN + FP)
+
+    # Plot singular values vs p
+    fig, ax = plt.subplots()
+    ax.plot(p_list, svals[:, 0], marker="o", linestyle="-", label="s1")
+    ax.plot(p_list, svals[:, 1], marker="s", linestyle="--", label="s2")
+    ax.plot(p_list, svals[:, 2], marker="^", linestyle=":", label="s3")
+    ax.set_xlabel("p")
+    ax.set_ylabel("singular values of T")
+    ax.set_title("Correlation tensor singular values vs p")
+    ax.legend()
+    tag = "_".join(tag_parts).replace("-", "m").replace(".", "p")
+    sv_path = save_plot(fig, f"{tag}_T_svals_vs_p.png")
+
+    # Save adjacency matrices
+    folder = ensure_png_dir()
+    g_path = os.path.join(folder, f"{tag}_adj_global.npy")
+    l_path = os.path.join(folder, f"{tag}_adj_local.npy")
+    np.save(g_path, A_global)
+    np.save(l_path, A_local)
+
+    # Save violations
+    v_path = os.path.join(folder, f"{tag}_monotone_violations.json")
+    with open(v_path, "w", encoding="utf-8") as f:
+        json.dump(violations, f, indent=2, default=lambda x: x.tolist() if hasattr(x, "tolist") else x)
+
+    # Console summary
+    lines = []
+    lines.append("LT Structured-Family Hierarchy (custom)")
+    lines.append("")
+    lines.append(f"Family: {family}")
+    if family in ("ray", "ray_pauli", "pauli"):
+        lines.append(f"Direction: C0 = (1/4){tag_parts[1]}")
+    else:
+        lines.append(f"Direction: C0 = (1/4)(tx XX + ty YY + tz ZZ) with tx,ty,tz = {tag_parts[1:]}")
+    lines.append(f"β = {system.beta}, dims = {system.dims}, symmetric = True assumed")
+    lines.append("")
+    lines.append("Analytic PSD interval from C~ eigenvalues:")
+    lines.append(f"  p ∈ [{p_min:.6g}, {p_max:.6g}] ; scanned interior shrink={p_shrink} -> [{p_lo:.6g}, {p_hi:.6g}]")
+    lines.append(f"num_p = {num_p}, include_negative = {include_negative}, pair_mode = {pair_mode}")
+    lines.append("")
+    lines.append("Outputs:")
+    lines.append(f"  - singular-value plot: {sv_path}")
+    lines.append(f"  - global adjacency .npy: {g_path}")
+    lines.append(f"  - local  adjacency .npy: {l_path}")
+    lines.append(f"  - monotone violations : {v_path} (count={len(violations)})")
+    lines.append("")
+    lines.append("Local feasibility vs svals(T) componentwise contraction predictor:")
+    lines.append(f"  TP={TP}, FP={FP}, TN={TN}, FN={FN}")
+    lines.append(f"  accuracy={accuracy:.4f}, precision={precision:.4f}, recall={recall:.4f}, specificity={specificity:.4f}")
+
+    return "\n".join(lines), {"A_global": A_global, "A_local": A_local, "violations": violations}
 
 # =========================
 # Main GUI entry
@@ -430,45 +778,71 @@ def main():
 
         elif eq_id == "lt_interior_geometry":
             num_samples = int(vars_dict.get("num_samples", 200))
+            use_classical_metric = bool(vars_dict.get("classical", False))
 
             projected = []
             for _ in range(num_samples):
                 rho = random_state(d)
 
-                sigma_LT, _, st1 = system.closest_lt_state(
+                sigma_LT, _, _ = system.closest_lt_state(
                     rho, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False
                 )
-                sigma_cl, dist_cl, st2 = system.closest_lt_state(
-                    rho, classical=True, solver=system.solver_default, tol=system.tol_default, verbose=False
-                )
-                if sigma_LT is None or sigma_cl is None:
+                if sigma_LT is None:
                     continue
 
                 D_val, I_val, _, _ = system.monotones(sigma_LT)
-                projected.append({"rho": sigma_LT, "D": D_val, "I": I_val, "dist_classical": dist_cl})
+
+                if use_classical_metric and system.dims == (2, 2):
+                    _, dist_cl, _ = system.closest_lt_state(
+                        rho, classical=True, solver=system.solver_default, tol=system.tol_default, verbose=False
+                    )
+                    if dist_cl is None:
+                        continue
+                    z_raw = float(dist_cl)
+                    z_name = "dist_to_classical_LT"
+                else:
+                    cm = system.correlation_metrics(sigma_LT)
+                    z_raw = float(cm["C_fro"])
+                    z_name = "||C||_F  where  rho = gamma⊗gamma + C"
+
+                projected.append({"rho": sigma_LT, "D": D_val, "I": I_val, "Z_raw": z_raw})
 
             if not projected:
                 log_warning("LT Interior Geometry", "No LT projections succeeded.")
                 return
 
-            D_vals = [p["D"] for p in projected]
-            I_vals = [p["I"] for p in projected]
-            Z_vals = [p["dist_classical"] for p in projected]
+            D_vals = np.array([p["D"] for p in projected], dtype=float)
+            I_vals = np.array([p["I"] for p in projected], dtype=float)
+            Z_raw  = np.array([p["Z_raw"] for p in projected], dtype=float)
 
-            # 3D plot (D, I, dist_to_classical)
+            z_min = float(np.min(Z_raw))
+            z_max = float(np.max(Z_raw))
+            denom = (z_max - z_min) if (z_max - z_min) > 1e-15 else 1.0
+
+            # Scale as "max -> min" so you get visible separation even for tiny raw ranges:
+            # z_plot = 0 means max(raw), z_plot = 1 means min(raw)
+            Z_plot = (z_max - Z_raw) / denom
+
+            # 3D plot (D, I, scaled Z)
             from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
             fig = plt.figure()
             ax = fig.add_subplot(111, projection="3d")
-            sc = ax.scatter(D_vals, I_vals, Z_vals)
+
+            sc = ax.scatter(D_vals, I_vals, Z_plot, c=Z_plot)
             ax.set_xlabel("D(ρ || γ⊗γ)")
             ax.set_ylabel("I(A:B)")
-            ax.set_zlabel("dist_to_classical_LT")
+            ax.set_zlabel(f"{z_name} (scaled: 0=max, 1=min)\nraw range [{z_min:.3e}, {z_max:.3e}]")
             ax.set_title("LT interior: random → LT projection")
-            fig.colorbar(sc, ax=ax, pad=0.1, label="Distance to classical LT")
+
+            cbar = fig.colorbar(sc, ax=ax, pad=0.1)
+            cbar.set_label(f"{z_name} (scaled max→min; raw in title)")
+
             path = save_plot(fig, "lt_interior_geometry_3d.png")
             log_info("LT Interior Geometry", f"Projected {len(projected)} states. Saved:\n{path}")
+            fig.show()
             print("Finished LT interior geometry analysis.")
 
+        
         elif eq_id == "lt_geometry_combined":
             # Final figure: interior + boundary + classical line (if qubits)
             num_samples = int(vars_dict.get("num_samples", 200))
@@ -528,54 +902,116 @@ def main():
         elif eq_id == "lt_convertibility_graph":
             # Build an LT ensemble and compute GP vs LGP reachability graphs
             num_samples = int(vars_dict.get("num_samples", 25))
-            N = max(8, min(30, num_samples))  # clamp for runtime
-            N = 8  # TEMP OVERRIDE FOR TESTING
+            use_classical = bool(vars_dict.get("classical", False))
+
+            N_target = max(8, min(30, num_samples))  # clamp for runtime
             states = []
             labels = []
 
-            # 1) Classical LT points (qubits only)
-            if system.dims == (2, 2):
-                n_cl = min(8, max(2, N // 3))
-                reports_cl = analyzer.scan_classical_LT_line_qubit(num_points=n_cl, solver=system.solver_default, tol=system.tol_default, verbose=False)
+            GAxGAp = np.kron(system.gammaA, system.gammaAp)
+
+            # --- anchors: bottom element gamma⊗gamma
+            states.append(0.5 * (GAxGAp + dagger(GAxGAp)))
+            labels.append("gamma⊗gamma")
+
+            # --- anchors: TFD and dephased TFD when available
+            try:
+                tfd = analyzer.factory.tfd_state()
+                tfd_deph = dephase_global_in_energy_basis(tfd)
+                states.append(tfd)
+                labels.append("TFD")
+                states.append(tfd_deph)
+                labels.append("TFD_dephased")
+            except Exception:
+                pass
+
+            # Optional: include classical LT samples only if the checkbox is enabled
+            if use_classical and system.dims == (2, 2):
+                n_cl = min(6, max(2, N_target // 4))
+                reports_cl = analyzer.scan_classical_LT_line_qubit(
+                    num_points=n_cl, solver=system.solver_default, tol=system.tol_default, verbose=False
+                )
                 for rep in reports_cl:
                     a = rep.get("a", None)
+                    if a is None:
+                        continue
                     rho_cl = analyzer.factory.classical_LT_point_qubit(a=a)
                     states.append(rho_cl)
-                    labels.append(f"cl a={a:.2f}")
+                    labels.append(f"classical a={a:.2f}")
 
-            # 2) Extremal LT boundary samples
-            n_ext = min(10, max(3, N // 3))
-            extremals = analyzer.sample_extremal_lt_states(num_samples=n_ext, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False)
+            # Extremal LT boundary samples
+            n_ext = min(10, max(3, N_target // 3))
+            extremals = analyzer.sample_extremal_lt_states(
+                num_samples=n_ext, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False
+            )
             for k, rep in enumerate(extremals):
                 states.append(rep["rho"])
                 labels.append(f"ext {k}")
 
-            # 3) Interior LT points via projection
-            while len(states) < N:
+            # Interior LT points via projection
+            while len(states) < N_target:
                 rho = random_state(d)
-                sigma_LT, _, _ = system.closest_lt_state(rho, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False)
+                sigma_LT, _, _ = system.closest_lt_state(
+                    rho, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False
+                )
                 if sigma_LT is None:
                     continue
                 states.append(sigma_LT)
                 labels.append(f"proj {len(states)-1}")
 
             N = len(states)
-            log_info("Convertibility Graph", f"Testing pairwise reachability on N={N} LT states (this can take a moment).")
+            log_info("Convertibility Graph", f"Testing pairwise reachability on N={N} LT states (can take time).")
 
+            # Precompute correlation strengths / signatures
+            I_node = np.zeros(N, dtype=float)
+            D_node = np.zeros(N, dtype=float)
+            Cfro_node = np.zeros(N, dtype=float)
+            Csvals_top = []
+
+            for i in range(N):
+                D_i, I_i, _, _ = system.monotones(states[i])
+                cm = system.correlation_metrics(states[i])
+                D_node[i] = float(D_i)
+                I_node[i] = float(I_i)
+                Cfro_node[i] = float(cm["C_fro"])
+                Csvals_top.append(cm["C_svals_top"])
+
+            # Adjacency + local residuals
             G = np.zeros((N, N), dtype=int)
             L = np.zeros((N, N), dtype=int)
+            L_res = np.full((N, N), np.inf, dtype=float)
 
-            # Pairwise convertibility
+            # Pairwise convertibility with monotone pre-screen:
+            # If I(i) < I(j), then i -> j is impossible under any GP (global or local),
+            # because local GP ⊂ global GP and D=I on LT.
+            mono_tol = 1e-10
+
             for i in range(N):
                 for j in range(N):
                     if i == j:
                         G[i, j] = 1
                         L[i, j] = 1
+                        L_res[i, j] = 0.0
                         continue
-                    g_ok, _ = system.check_global_gp_feasible(states[i], states[j], solver=system.solver_default, tol=system.tol_default, verbose=False)
-                    l_ok, _ = system.check_local_gp_feasible(states[i], states[j], solver=system.solver_default, tol=system.tol_default, verbose=False)
+
+                    if I_node[i] + mono_tol < I_node[j]:
+                        G[i, j] = 0
+                        L[i, j] = 0
+                        L_res[i, j] = np.inf
+                        continue
+
+                    g_ok, _ = system.check_global_gp_feasible(
+                        states[i], states[j], solver=system.solver_default, tol=system.tol_default, verbose=False
+                    )
                     G[i, j] = 1 if g_ok else 0
+
+                    l_ok, l_status, l_det = system.check_local_gp_feasible(
+                        states[i], states[j],
+                        solver=system.solver_default, tol=system.tol_default, verbose=False,
+                        return_details=True
+                    )
                     L[i, j] = 1 if l_ok else 0
+                    L_res[i, j] = float(l_det.get("residual", np.inf))
 
             # Incomparability under LGP
             unordered = 0
@@ -597,19 +1033,89 @@ def main():
 
             fig, ax = plt.subplots()
             ax.imshow(L, interpolation="nearest", aspect="auto")
-            ax.set_title(f"Adjacency: Local GP (i → j)  | incomparability={inc_rate:.2%}")
+            ax.set_title(f"Adjacency: Local GP (i → j) | incomparability={inc_rate:.2%}")
             ax.set_xlabel("j")
             ax.set_ylabel("i")
             pathL = save_plot(fig, "convertibility_local_heatmap.png")
 
-            # Directed graph in 3D (use local graph)
+            # ---- SCC decomposition (Kosaraju) on local graph ----
+            def _scc_kosaraju(adj: np.ndarray):
+                n = adj.shape[0]
+                g = [list(np.where(adj[i] == 1)[0]) for i in range(n)]
+                rg = [list(np.where(adj[:, i] == 1)[0]) for i in range(n)]
+
+                seen = [False] * n
+                order = []
+
+                def dfs1(v):
+                    seen[v] = True
+                    for u in g[v]:
+                        if not seen[u]:
+                            dfs1(u)
+                    order.append(v)
+
+                for v in range(n):
+                    if not seen[v]:
+                        dfs1(v)
+
+                comp = [-1] * n
+                comps = []
+
+                def dfs2(v, cid):
+                    comp[v] = cid
+                    comps[-1].append(v)
+                    for u in rg[v]:
+                        if comp[u] == -1:
+                            dfs2(u, cid)
+
+                for v in reversed(order):
+                    if comp[v] == -1:
+                        comps.append([])
+                        dfs2(v, len(comps) - 1)
+                return comps
+
+            comps = _scc_kosaraju(L)
+            comps_sorted = sorted(comps, key=len, reverse=True)
+
+            # Print SCC summary + node signatures
+            lines = []
+            lines.append(f"Local GP SCCs: {len(comps_sorted)} components")
+            for k, comp in enumerate(comps_sorted[:10]):
+                if len(comp) <= 1:
+                    continue
+                lines.append(f"\nSCC #{k} | size={len(comp)}")
+                for idx in sorted(comp):
+                    sv = Csvals_top[idx]
+                    sv_str = ", ".join([f"{x:.3e}" for x in sv])
+                    lines.append(
+                        f"  [{idx:02d}] {labels[idx]:>14} | I={I_node[idx]:.6f} | ||C||_F={Cfro_node[idx]:.3e} | svals(C)~[{sv_str}]"
+                    )
+            log_info("Local GP SCC structure", "\n".join(lines))
+
+            # Print a compact edge list (local feasible), prioritizing high-I sources
+            edges = []
+            for i in range(N):
+                for j in range(N):
+                    if i != j and L[i, j] == 1:
+                        edges.append((i, j, I_node[i], I_node[j], L_res[i, j]))
+            edges.sort(key=lambda t: (-t[2], t[4]))  # high I(source), then low residual
+
+            edge_lines = ["Top Local-GP edges (source→target):"]
+            for (i, j, Ii, Ij, res) in edges[:25]:
+                edge_lines.append(
+                    f"  {labels[i]}[{i}] → {labels[j]}[{j}] | ΔI={Ii-Ij:+.3e} | I: {Ii:.6f}->{Ij:.6f} | residual={res:.3e}"
+                )
+            log_info("Local GP edge sample", "\n".join(edge_lines))
+
+            # Directed graph in 3D (embedded coords) with node color = I
             coords_rng = np.random.default_rng(0)
             coords = np.array([embed_state_3d(system, r, rng=coords_rng) for r in states])
 
             from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
             fig = plt.figure()
             ax = fig.add_subplot(111, projection="3d")
-            ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2])
+
+            sc = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c=I_node)
 
             # draw edges if not too dense
             if N <= 25:
@@ -624,18 +1130,141 @@ def main():
                                 alpha=0.35,
                             )
 
-            ax.set_title("Local GP reachability graph (embedded in 3D)")
-            ax.set_xlabel("x")
-            ax.set_ylabel("y")
-            ax.set_zlabel("z")
+            # Meaningful axis labels when (2,2)
+            if system.dims == (2, 2):
+                ax.set_xlabel("⟨σx⊗σx⟩")
+                ax.set_ylabel("⟨σy⊗σy⟩")
+                ax.set_zlabel("⟨σz⊗σz⟩")
+            else:
+                ax.set_xlabel("embed x")
+                ax.set_ylabel("embed y")
+                ax.set_zlabel("embed z")
+
+            ax.set_title("Local GP reachability graph (3D embed), color=I(A:B)")
+            cbar = fig.colorbar(sc, ax=ax, pad=0.1)
+            cbar.set_label("I(A:B) (correlation strength on LT)")
+
             pathGraph = save_plot(fig, "convertibility_local_graph_3d.png")
 
             log_info(
                 "Convertibility Graph Results",
                 f"Incomparability rate (Local GP): {inc_rate:.2%}\n"
-                f"Saved heatmaps:\n- {pathG}\n- {pathL}\nSaved graph:\n- {pathGraph}"
+                f"Saved heatmaps:\n- {pathG}\n- {pathL}\nSaved 3D graph:\n- {pathGraph}"
             )
             print("Finished LT convertibility graph analysis.")
+
+        elif eq_id == "lt_family_ray_validation":
+            if system.dims != (2, 2):
+                log_warning("LT family ray validation", "This experiment is implemented for dims=(2,2) only.")
+                return
+
+            label = str(vars_dict.get("label", "XX"))
+            num_points = int(vars_dict.get("num_points", 21))
+            include_negative = bool(vars_dict.get("include_negative", False))
+            pair_mode = str(vars_dict.get("pair_mode", "adjacent"))
+            p_shrink = float(vars_dict.get("p_shrink", 0.98))
+
+            fam = analyzer.scan_lt_ray_family_pauli(
+                label=label,
+                num_points=num_points,
+                include_negative=include_negative,
+                p_shrink=p_shrink,
+            )
+            rep = analyzer.validate_local_gp_monotones_on_ray(
+                fam["p_list"],
+                fam["states"],
+                pair_mode=pair_mode,
+                solver=system.solver_default,
+                tol=system.tol_default,
+                eps_map_local=system.eps_eq_local,
+                eps_gibbs=system.eps_gibbs,
+                verbose=False,
+            )
+
+            title = f"Ray family ({label}), β={system.beta}"
+            plot_lt_family_scan(fam["p_list"], rep["observables"], title, f"ray_{label}")
+
+            v = rep["violations"]
+            text = (
+                f"Family: ρ(p)=γ⊗γ+pC0 with C0=(1/4){label}\n"
+                f"Analytic PSD bounds: p∈[{fam['p_bounds'][0]:.6g}, {fam['p_bounds'][1]:.6g}] (scan uses shrink={p_shrink})\n"
+                f"Scan points: {len(fam['p_list'])}, pair_mode={pair_mode}\n"
+                f"Local-GP tests run: {len(rep['edges'])}\n"
+                f"Feasible edges: {sum(1 for e in rep['edges'] if e['local_feasible'])}\n"
+                f"Monotone-inequality violations among feasible edges: {len(v)}\n\n"
+                "Saved plots:\n"
+                f"- png/ray_{label}_I_vs_p.png\n"
+                f"- png/ray_{label}_C_norms_vs_p.png\n"
+                f"- png/ray_{label}_T_svals_vs_p.png (if applicable)\n"
+            )
+            if len(v) > 0:
+                text += "\nFirst violation (debug):\n" + str(v[0])
+            log_info("LT Family Ray Validation", text)
+
+        elif eq_id == "lt_family_diagT_validation":
+            if system.dims != (2, 2):
+                log_warning("LT family diagT validation", "This experiment is implemented for dims=(2,2) only.")
+                return
+
+            # Parse t0 as 'tx;ty;tz' or 'tx,ty,tz' or separate keys
+            t0_raw = vars_dict.get("t0", None)
+            if t0_raw is not None:
+                t0_str = str(t0_raw)
+                import re
+                parts = [p for p in re.split(r"[;,]", t0_str) if p.strip()]
+                if len(parts) != 3:
+                    raise ValueError("t0 must be 'tx;ty;tz' or 'tx,ty,tz'")
+                t0 = (float(parts[0]), float(parts[1]), float(parts[2]))
+            else:
+                t0 = (
+                    float(vars_dict.get("tx", 1.0)),
+                    float(vars_dict.get("ty", 0.0)),
+                    float(vars_dict.get("tz", 0.0)),
+                )
+
+            num_points = int(vars_dict.get("num_points", 21))
+            include_negative = bool(vars_dict.get("include_negative", False))
+            pair_mode = str(vars_dict.get("pair_mode", "adjacent"))
+            p_shrink = float(vars_dict.get("p_shrink", 0.98))
+
+            fam = analyzer.scan_lt_diagT_family(
+                t0=t0,
+                num_points=num_points,
+                include_negative=include_negative,
+                p_shrink=p_shrink,
+            )
+            rep = analyzer.validate_local_gp_monotones_on_ray(
+                fam["p_list"],
+                fam["states"],
+                pair_mode=pair_mode,
+                solver=system.solver_default,
+                tol=system.tol_default,
+                eps_map_local=system.eps_eq_local,
+                eps_gibbs=system.eps_gibbs,
+                verbose=False,
+            )
+
+            t0x, t0y, t0z = t0
+            tag = f"{t0x:g}_{t0y:g}_{t0z:g}".replace("-", "m").replace(".", "p")
+            title = f"diagT ray (t0={t0}), β={system.beta}"
+            plot_lt_family_scan(fam["p_list"], rep["observables"], title, f"diagT_{tag}")
+
+            v = rep["violations"]
+            text = (
+                f"Family: ρ(p)=γ⊗γ + p*(t0x XX + t0y YY + t0z ZZ)/4 with t0={t0}\n"
+                f"Analytic PSD bounds: p∈[{fam['p_bounds'][0]:.6g}, {fam['p_bounds'][1]:.6g}] (scan uses shrink={p_shrink})\n"
+                f"Scan points: {len(fam['p_list'])}, pair_mode={pair_mode}\n"
+                f"Local-GP tests run: {len(rep['edges'])}\n"
+                f"Feasible edges: {sum(1 for e in rep['edges'] if e['local_feasible'])}\n"
+                f"Monotone-inequality violations among feasible edges: {len(v)}\n\n"
+                "Saved plots:\n"
+                f"- png/diagT_{tag}_I_vs_p.png\n"
+                f"- png/diagT_{tag}_C_norms_vs_p.png\n"
+                f"- png/diagT_{tag}_T_svals_vs_p.png\n"
+            )
+            if len(v) > 0:
+                text += "\nFirst violation (debug):\n" + str(v[0])
+            log_info("LT Family DiagT Validation", text)
 
         elif eq_id == "extract_global_channel":
             # Try to find one mapping where global GP is feasible, then dump the Choi matrix.
@@ -778,6 +1407,50 @@ def main():
             text = "\n".join(lines)
             log_info("Sanity checks", text)
             print("Finished sanity checks analysis.")
+        elif eq_id == "custom":
+            # Custom JSON spec pasted in the GUI custom box.
+            # Required:
+            #   {"experiment":"lt_structured_family_hierarchy", "family":"ray", "label":"XX", "num_p":21, ...}
+            # or:
+            #   {"experiment":"lt_structured_family_hierarchy", "family":"diagT", "tx":1, "ty":0, "tz":1, ...}
+            try:
+                if not custom_func_text.strip():
+                    raise ValueError("Custom JSON spec is empty.")
+                spec = json.loads(custom_func_text)
+            except Exception as e:
+                lines = [
+                    "Custom mode expects a JSON object in the Custom box.",
+                    "",
+                    "Example (Pauli ray):",
+                    '{"experiment":"lt_structured_family_hierarchy","family":"ray","label":"XX","num_p":21,"pair_mode":"decreasing","mono_tol":1e-8,"p_shrink":0.98}',
+                    "",
+                    "Example (diagT ray):",
+                    '{"experiment":"lt_structured_family_hierarchy","family":"diagT","tx":1,"ty":0,"tz":1,"num_p":21,"pair_mode":"decreasing","mono_tol":1e-8,"p_shrink":0.98}',
+                    "",
+                    f"Parse error: {e}",
+                ]
+                log_error("Custom JSON parse error", "\n".join(lines))
+                return
+
+            exp = str(spec.get("experiment", "")).strip()
+            if exp != "lt_structured_family_hierarchy":
+                lines = [
+                    "Unknown custom experiment.",
+                    "",
+                    "Supported:",
+                    '  experiment="lt_structured_family_hierarchy"',
+                    "",
+                    f"Got: {exp}",
+                ]
+                log_warning("Custom", "\n".join(lines))
+                return
+
+            try:
+                summary, _ = _structured_family_hierarchy_run(system, analyzer, spec)
+                log_info("LT Structured-Family Hierarchy", summary)
+            except Exception as e:
+                log_error("LT Structured-Family Hierarchy error", str(e))
+                return
 
         else:
             log_warning(

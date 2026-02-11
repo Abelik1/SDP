@@ -162,7 +162,12 @@ class LTSDPWindow(QWidget):
         self.solver = QComboBox()
         self.solver.addItems(["SCS", "CVXOPT", "MOSEK"])
         form.addRow("Solver hint:", self.solver)
-
+         # Extra backend variables (free-form key=value pairs)
+        self.extra_vars = QLineEdit()
+        self.extra_vars.setPlaceholderText(
+            "Extra vars (optional). Example: family=ray_pauli,label=XX,num_points=17,pair_mode=adjacent"
+        )
+        form.addRow("Extra vars:", self.extra_vars)
         # Variables string preview
         self.vars_preview_line = QLineEdit()
         self.vars_preview_line.setReadOnly(True)
@@ -252,6 +257,18 @@ class LTSDPWindow(QWidget):
                 "Custom (backend-defined)",
                 "In Custom mode, the JSON spec is passed through verbatim so the backend can build any SDP it wants."
             ),
+            EquationItem(
+                "lt_family_ray_validation",
+                "LT Family: Ray ρ(p)=γ⊗γ+pC0 (Local GP monotones)",
+                "Scan a 1D LT ray family (qubits only) and test local-GP feasibility along the ray while checking monotone inequalities (I, ||C||, singular values of T).\n"
+                "Use 'Extra vars' for: family=ray_pauli, label=XX|YY|ZZ|XY|XZ|YZ, num_points, include_negative, pair_mode=adjacent|all."
+            ),
+            EquationItem(
+                "lt_family_diagT_validation",
+                "LT Family: Diagonal-T ray (tx,ty,tz) (Local GP monotones)",
+                "Scan a diagonal correlation-tensor ray ρ(p)=γ⊗γ + p*(tx XX+ty YY+tz ZZ)/4 (qubits only).\n"
+                "Use 'Extra vars' for: family=diagT_ray, t0=tx;ty;tz, num_points, include_negative, pair_mode=adjacent|all."
+            ),
         ]
 
     # -------------------------
@@ -310,6 +327,14 @@ class LTSDPWindow(QWidget):
             2: "MOSEK",
         }
         pairs.append(_kv("solver", solver_map.get(self.solver.currentIndex(), "SCS")))
+                # Append user-provided extra vars verbatim (comma-separated key=value pairs).
+        extra = self.extra_vars.text().strip()
+        if extra:
+            # Allow either comma-separated or whitespace-separated.
+            extra = extra.replace(" ", "")
+            if extra.startswith(","):
+                extra = extra[1:]
+            pairs.append(extra)
 
         return ", ".join(pairs)
 

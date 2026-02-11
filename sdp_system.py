@@ -91,6 +91,16 @@ def choi_identity(d):
             eij[i, j] = 1.0
             J += np.kron(eij, eij)
     return J
+# ==========================================
+# Qubit Pauli helpers (used for LT families)
+# ==========================================
+
+def paulis():
+    """Return (σx, σy, σz) as 2x2 complex arrays."""
+    sx = np.array([[0, 1], [1, 0]], dtype=complex)
+    sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    sz = np.array([[1, 0], [0, -1]], dtype=complex)
+    return sx, sy, sz
 
 # ==========================================
 # Core class: LTSDPSystem
@@ -162,7 +172,187 @@ class LTSDPSystem:
         return D_rho, I_rho, C_A, C_Ap
 
     # --------- Internal helpers for GP SDPs ---------
+    @staticmethod
+    def trace_norm_hermitian(X, tol: float = 1e-12) -> float:
+        """
+        ||X||_1 for (approximately) Hermitian X via eigenvalues.
+        """
+        Xh = 0.5 * (X + X.conj().T)
+        w, _ = eigh(Xh)
+        w = np.real(w)
+        w[np.abs(w) < tol] = 0.0
+        return float(np.sum(np.abs(w)))
 
+    def correlation_C(self, rho: np.ndarray) -> np.ndarray:
+        """
+        C := rho - gammaA⊗gammaAp (Hermitian symmetrized).
+        On LT states, C has zero marginals.
+        """
+        GAxGAp = kron(self.gammaA, self.gammaAp)
+        rho_h = 0.5 * (rho + rho.conj().T)
+        C = rho_h - GAxGAp
+        return 0.5 * (C + C.conj().T)
+
+    def operator_schmidt_svals_C(self, rho: np.ndarray) -> np.ndarray:
+        """
+        Operator-Schmidt singular values of C across A|A':
+          reshape C into (dA^2, dA'^2) and take svals.
+        Useful as a vector signature of correlation structure.
+        """
+        dA, dAp = self.dims
+        C = self.correlation_C(rho)
+        M = C.reshape(dA * dA, dAp * dAp)
+        svals = np.linalg.svd(M, compute_uv=False)
+        return np.real_if_close(svals)
+
+    def correlation_metrics(self, rho: np.ndarray, tol: float = 1e-12) -> dict:
+        """
+        Bundle of diagnostics for C.
+        """
+        C = self.correlation_C(rho)
+
+        # zero-marginal checks (should be ~0 on LT states)
+        CA = partial_trace(C, self.dims, keep=[0], tol=tol)
+        CAp = partial_trace(C, self.dims, keep=[1], tol=tol)
+
+        C_fro = float(norm(C, "fro"))
+        C_tr  = 0.5 * self.trace_norm_hermitian(C, tol=tol)
+
+        svals = self.operator_schmidt_svals_C(rho)
+        s_top = svals[: min(6, len(svals))].copy()
+
+        return {
+            "C": C,
+            "C_fro": C_fro,
+            "C_trace_dist": C_tr,   # = 0.5||C||_1
+            "C_marginalA_fro": float(norm(CA, "fro")),
+            "C_marginalAp_fro": float(norm(CAp, "fro")),
+            "C_svals": svals,
+            "C_svals_top": s_top,
+        }
+    
+    # ==========================================
+    # LT family helpers (ray + qubit correlation tensor)
+    # ==========================================
+
+    @staticmethod
+    def _invsqrt_psd(mat: np.ndarray, tol: float = 1e-12) -> np.ndarray:
+        """Return mat^{-1/2} for PSD Hermitian mat via eigendecomposition."""
+        w, U = eigh(0.5 * (mat + mat.conj().T))
+        w = np.real(w)
+        w[w < tol] = tol
+        return U @ np.diag(w ** (-0.5)) @ dagger(U)
+
+    def whiten_C(self, C0: np.ndarray, tol: float = 1e-12) -> np.ndarray:
+        """Compute C~ = (γ^{-1/2}⊗γ'^{-1/2}) C0 (γ^{-1/2}⊗γ'^{-1/2})."""
+        GinvA = self._invsqrt_psd(self.gammaA, tol=tol)
+        GinvB = self._invsqrt_psd(self.gammaAp, tol=tol)
+        W = np.kron(GinvA, GinvB)
+        C0h = 0.5 * (C0 + C0.conj().T)
+        Ct = W @ C0h @ W
+        return 0.5 * (Ct + Ct.conj().T)
+
+    def lt_ray_p_bounds(self, C0: np.ndarray, tol: float = 1e-12) -> tuple[float, float]:
+        """
+        For the LT ray family ρ(p) = γ⊗γ + p C0, positivity is equivalent to
+          I + p C~ ⪰ 0,
+        where C~ = (γ^{-1/2}⊗γ'^{-1/2}) C0 (γ^{-1/2}⊗γ'^{-1/2}).
+
+        Returns (p_min, p_max) such that ρ(p) ⪰ 0 for all p in [p_min, p_max].
+        """
+        Ct = self.whiten_C(C0, tol=tol)
+        lam = np.linalg.eigvalsh(0.5 * (Ct + Ct.conj().T))
+        lam = np.real(lam)
+
+        p_min = -np.inf
+        p_max = +np.inf
+        for x in lam:
+            if x > tol:
+                p_min = max(p_min, -1.0 / x)
+            elif x < -tol:
+                p_max = min(p_max, -1.0 / x)  # -1/negative is positive
+
+        # If Ct has only one sign, one side is unbounded; clamp for safety.
+        if not np.isfinite(p_min):
+            p_min = -1e6
+        if not np.isfinite(p_max):
+            p_max = +1e6
+        return float(p_min), float(p_max)
+
+    def lt_ray_state(self, C0: np.ndarray, p: float) -> np.ndarray:
+        """Construct ρ(p)=γ⊗γ+pC0 (Hermitian symmetrized)."""
+        GAxGAp = kron(self.gammaA, self.gammaAp)
+        rho = GAxGAp + float(p) * 0.5 * (C0 + C0.conj().T)
+        rho = 0.5 * (rho + rho.conj().T)
+        # trace should be 1 if Tr(C0)=0; enforce numerically anyway
+        tr = np.trace(rho)
+        if abs(tr) > 1e-15:
+            rho = rho / tr
+        return 0.5 * (rho + rho.conj().T)
+
+    def qubit_C0_from_pauli_label(self, label: str) -> np.ndarray:
+        """
+        Build a canonical zero-marginal, traceless direction C0 for (2,2) from a label:
+          'XX','YY','ZZ','XY','XZ','YZ' (case-insensitive).
+
+        Convention: C0 = (1/4) σ_i ⊗ σ_j.
+        Then the correlation tensor coordinate t_{ij} = Tr(C σ_i⊗σ_j) equals 1 at p=1.
+        """
+        if self.dims != (2, 2):
+            raise ValueError("qubit_C0_from_pauli_label requires dims=(2,2)")
+        sx, sy, sz = paulis()
+        pauli = {"X": sx, "Y": sy, "Z": sz}
+        lab = label.strip().upper()
+        if len(lab) != 2 or lab[0] not in pauli or lab[1] not in pauli:
+            raise ValueError(f"Unknown pauli label '{label}'. Use one of XX,YY,ZZ,XY,XZ,YZ.")
+        return 0.25 * np.kron(pauli[lab[0]], pauli[lab[1]])
+
+    def qubit_C_from_diag_T(self, tx: float, ty: float, tz: float) -> np.ndarray:
+        """Return C = (1/4)(tx XX + ty YY + tz ZZ) for dims=(2,2)."""
+        if self.dims != (2, 2):
+            raise ValueError("qubit_C_from_diag_T requires dims=(2,2)")
+        sx, sy, sz = paulis()
+        XX = np.kron(sx, sx)
+        YY = np.kron(sy, sy)
+        ZZ = np.kron(sz, sz)
+        C = 0.25 * (float(tx) * XX + float(ty) * YY + float(tz) * ZZ)
+        return 0.5 * (C + C.conj().T)
+
+    def qubit_correlation_tensor_T(self, rho: np.ndarray, use_C: bool = True) -> np.ndarray:
+        """
+        Correlation tensor T_{ij} for i,j∈{x,y,z} extracted via
+          C = rho - γ⊗γ,
+          T_{ij} = Tr(C σ_i⊗σ_j)   (so C = (1/4) Σ_{ij} T_{ij} σ_i⊗σ_j).
+        """
+        if self.dims != (2, 2):
+            raise ValueError("qubit_correlation_tensor_T requires dims=(2,2)")
+        sx, sy, sz = paulis()
+        sig = [sx, sy, sz]
+        if use_C:
+            X = self.correlation_C(rho)
+        else:
+            X = 0.5 * (rho + rho.conj().T)
+        T = np.zeros((3, 3), dtype=float)
+        for i in range(3):
+            for j in range(3):
+                O = np.kron(sig[i], sig[j])
+                T[i, j] = float(np.real(np.trace(X @ O)))
+        return T
+
+    @staticmethod
+    def majorization_holds(x: np.ndarray, y: np.ndarray, tol: float = 1e-10) -> bool:
+        """Check x majorizes y for real vectors (assumes nonnegative entries)."""
+        xs = np.sort(np.real(x))[::-1]
+        ys = np.sort(np.real(y))[::-1]
+        if xs.shape != ys.shape:
+            return False
+        if xs.sum() + tol < ys.sum():
+            return False
+        cxs = np.cumsum(xs)
+        cys = np.cumsum(ys)
+        return bool(np.all(cxs + tol >= cys))
+    
+    
     def _select_solver(self, solver, verbose=False):
         solver_actual = self.solver_default if solver is None else solver
         if str(solver_actual).upper() == "AUTO":

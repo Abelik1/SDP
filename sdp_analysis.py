@@ -95,6 +95,19 @@ class LTStateFactory:
         a_max = g0
         a = np.random.uniform(a_min, a_max)
         return self.classical_LT_point_qubit(a=a)
+    # ------------------------------------------
+    # Structured LT family generators (2x2 only)
+    # ------------------------------------------
+
+    def lt_ray_state_pauli(self, label: str, p: float) -> np.ndarray:
+        """ρ(p)=γ⊗γ + p C0 with C0=(1/4)σ_i⊗σ_j."""
+        C0 = self.system.qubit_C0_from_pauli_label(label)
+        return self.system.lt_ray_state(C0, p)
+
+    def lt_diagT_state(self, tx: float, ty: float, tz: float) -> np.ndarray:
+        """ρ=γ⊗γ + (1/4)(tx XX + ty YY + tz ZZ)."""
+        C = self.system.qubit_C_from_diag_T(tx=tx, ty=ty, tz=tz)
+        return self.system.lt_ray_state(C, 1.0)
 
 
 # ==========================================
@@ -410,3 +423,244 @@ class LTAnalyzer:
             )
 
         return extremals
+    # ==========================================
+    # Structured LT families + monotone validation
+    # ==========================================
+
+    def scan_lt_ray_family_pauli(
+        self,
+        label: str = "XX",
+        num_points: int = 21,
+        p_min: float | None = None,
+        p_max: float | None = None,
+        p_shrink: float = 0.98,
+        include_negative: bool = False,
+        tol_psd: float = 1e-12,
+    ) -> dict:
+        """
+        Build a 1D LT ray ρ(p)=γ⊗γ + p C0 with C0=(1/4)σ_i⊗σ_j.
+
+        - If (p_min,p_max) not provided, uses analytic PSD bounds from the whitening condition.
+        - By default scans p∈[0,p_max]. Set include_negative=True to scan symmetric range.
+
+        Returns dict with keys: p_list, states, C0, p_bounds.
+        """
+        if self.system.dims != (2, 2):
+            raise ValueError("scan_lt_ray_family_pauli requires dims=(2,2)")
+
+        C0 = self.system.qubit_C0_from_pauli_label(label)
+        p_lo, p_hi = self.system.lt_ray_p_bounds(C0, tol=tol_psd)
+
+        if p_min is None or p_max is None:
+            p_min_eff = p_lo if include_negative else 0.0
+            p_max_eff = p_hi
+        else:
+            p_min_eff = float(p_min)
+            p_max_eff = float(p_max)
+
+        p_min_eff *= p_shrink
+        p_max_eff *= p_shrink
+
+        p_list = np.linspace(p_min_eff, p_max_eff, int(num_points))
+        states = [self.system.lt_ray_state(C0, float(p)) for p in p_list]
+
+        return {
+            "family": "ray_pauli",
+            "label": label,
+            "C0": C0,
+            "p_bounds": (p_lo, p_hi),
+            "p_list": p_list,
+            "states": states,
+        }
+
+    def scan_lt_diagT_family(
+        self,
+        t0: tuple[float, float, float] = (1.0, 0.0, 0.0),
+        num_points: int = 21,
+        p_min: float | None = None,
+        p_max: float | None = None,
+        p_shrink: float = 0.98,
+        include_negative: bool = False,
+        tol_psd: float = 1e-12,
+    ) -> dict:
+        """
+        Diagonal correlation-tensor ray:
+          ρ(p) = γ⊗γ + p * C0,
+          C0 = (1/4)(t0x XX + t0y YY + t0z ZZ).
+
+        Returns dict with keys: p_list, states, C0, t0, p_bounds.
+        """
+        if self.system.dims != (2, 2):
+            raise ValueError("scan_lt_diagT_family requires dims=(2,2)")
+
+        t0x, t0y, t0z = [float(x) for x in t0]
+        C0 = self.system.qubit_C_from_diag_T(tx=t0x, ty=t0y, tz=t0z)
+        p_lo, p_hi = self.system.lt_ray_p_bounds(C0, tol=tol_psd)
+
+        if p_min is None or p_max is None:
+            p_min_eff = p_lo if include_negative else 0.0
+            p_max_eff = p_hi
+        else:
+            p_min_eff = float(p_min)
+            p_max_eff = float(p_max)
+
+        p_min_eff *= p_shrink
+        p_max_eff *= p_shrink
+
+        p_list = np.linspace(p_min_eff, p_max_eff, int(num_points))
+        states = [self.system.lt_ray_state(C0, float(p)) for p in p_list]
+
+        return {
+            "family": "diagT_ray",
+            "t0": (t0x, t0y, t0z),
+            "C0": C0,
+            "p_bounds": (p_lo, p_hi),
+            "p_list": p_list,
+            "states": states,
+        }
+
+    def compute_family_observables(self, states: list[np.ndarray]) -> dict:
+        """Compute I, D, ||C||_1/2, ||C||_F, and singular values of Pauli correlation tensor T."""
+        sys = self.system
+
+        I = []
+        D = []
+        C1 = []      # 1/2||C||_1
+        CF = []      # ||C||_F
+        Tsvals = []  # singular values of 3x3 correlation tensor
+        Tdiag = []   # diag entries (diagnostic)
+
+        for rho in states:
+            Dv, Iv, _, _ = sys.monotones(rho)
+            cm = sys.correlation_metrics(rho)
+            I.append(float(Iv))
+            D.append(float(Dv))
+            C1.append(float(cm["C_trace_dist"]))
+            CF.append(float(cm["C_fro"]))
+
+            if sys.dims == (2, 2):
+                T = sys.qubit_correlation_tensor_T(rho, use_C=True)
+                s = np.linalg.svd(T, compute_uv=False)
+                Tsvals.append(np.sort(np.real(s))[::-1])
+                Tdiag.append(np.real(np.diag(T)))
+            else:
+                Tsvals.append(None)
+                Tdiag.append(None)
+
+        return {
+            "I": np.array(I, dtype=float),
+            "D": np.array(D, dtype=float),
+            "C_trace_dist": np.array(C1, dtype=float),
+            "C_fro": np.array(CF, dtype=float),
+            "T_svals": Tsvals,
+            "T_diag": Tdiag,
+        }
+
+    def validate_local_gp_monotones_on_ray(
+        self,
+        p_list: np.ndarray,
+        states: list[np.ndarray],
+        pair_mode: str = "adjacent",
+        solver: str | None = None,
+        tol: float | None = None,
+        eps_map_local: float | None = None,
+        eps_gibbs: float | None = None,
+        mono_tol: float = 1e-9,
+        verbose: bool = False,
+    ) -> dict:
+        """
+        For p1>p2, test local GP feasibility + verify monotone inequalities on feasible edges.
+
+        Checks on feasible edges:
+          - I decreases:        I(p1) >= I(p2)
+          - ||C||_1 decreases: ||C1|| >= ||C2||   (here stored as 0.5||C||_1)
+          - svals(T) contract: svals(T1) majorize svals(T2)
+
+        Returns dict with all edge results and any violations.
+        """
+        sys = self.system
+        obs = self.compute_family_observables(states)
+        I = obs["I"]
+        C1 = obs["C_trace_dist"]
+        Ts = obs["T_svals"]
+
+        idx_pairs = []
+        n = len(states)
+        if pair_mode.lower() == "all":
+            for i in range(n):
+                for j in range(n):
+                    if p_list[i] > p_list[j]:
+                        idx_pairs.append((i, j))
+        elif pair_mode.lower() == "adjacent":
+            for i in range(1, n):
+                if p_list[i] > p_list[i - 1]:
+                    idx_pairs.append((i, i - 1))
+                else:
+                    idx_pairs.append((i - 1, i))
+        else:
+            raise ValueError("pair_mode must be 'adjacent' or 'all'")
+
+        edges = []
+        violations = []
+
+        for (i, j) in idx_pairs:
+            src = states[i]
+            tgt = states[j]
+
+            l_ok, l_status, l_det = sys.check_local_gp_feasible(
+                src,
+                tgt,
+                solver=solver,
+                tol=tol,
+                eps_map=eps_map_local,
+                eps_gibbs=eps_gibbs,
+                verbose=verbose,
+                return_details=True,
+            )
+            res = float(l_det.get("residual", np.inf))
+
+            edge = {
+                "i": i,
+                "j": j,
+                "p_i": float(p_list[i]),
+                "p_j": float(p_list[j]),
+                "local_feasible": bool(l_ok),
+                "status": str(l_status),
+                "residual": res,
+                "I_i": float(I[i]),
+                "I_j": float(I[j]),
+                "C1_i": float(C1[i]),
+                "C1_j": float(C1[j]),
+            }
+
+            if sys.dims == (2, 2):
+                s_i = np.array(Ts[i], dtype=float)
+                s_j = np.array(Ts[j], dtype=float)
+                edge["T_svals_i"] = s_i
+                edge["T_svals_j"] = s_j
+
+            if l_ok:
+                ok_I = (I[i] + mono_tol >= I[j])
+                ok_C = (C1[i] + mono_tol >= C1[j])
+                ok_T = True
+                if sys.dims == (2, 2):
+                    ok_T = sys.majorization_holds(s_i, s_j, tol=mono_tol)
+
+                edge["ineq_ok"] = bool(ok_I and ok_C and ok_T)
+                edge["ineq_detail"] = {
+                    "I_contracts": bool(ok_I),
+                    "C1_contracts": bool(ok_C),
+                    "T_svals_majorize": bool(ok_T),
+                }
+                if not edge["ineq_ok"]:
+                    violations.append(edge)
+
+            edges.append(edge)
+
+        return {
+            "p_list": p_list,
+            "observables": obs,
+            "edges": edges,
+            "violations": violations,
+        }
+
