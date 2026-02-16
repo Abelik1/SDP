@@ -120,7 +120,7 @@ class LTSDPWindow(QWidget):
         self.eps_eq_global.setDecimals(12)
         self.eps_eq_global.setRange(0.0, 1.0)
         self.eps_eq_global.setSingleStep(1e-6)
-        self.eps_eq_global.setValue(1e-8)
+        self.eps_eq_global.setValue(1e-6)
         form.addRow("ε map (global):", self.eps_eq_global)
 
         self.eps_eq_local = QDoubleSpinBox()
@@ -268,6 +268,31 @@ class LTSDPWindow(QWidget):
                 "LT Family: Diagonal-T ray (tx,ty,tz) (Local GP monotones)",
                 "Scan a diagonal correlation-tensor ray ρ(p)=γ⊗γ + p*(tx XX+ty YY+tz ZZ)/4 (qubits only).\n"
                 "Use 'Extra vars' for: family=diagT_ray, t0=tx;ty;tz, num_points, include_negative, pair_mode=adjacent|all."
+            ),
+
+            EquationItem(
+                "lt_C_diagT_plane_characterise",
+                "LT +C: Characterise feasible C in a 2D diag-T plane",
+                "Compute the boundary of the feasible '+C' region in a chosen diag-T plane (qubits only), and sample interior points to compare Global GP vs Local GP.\n"
+                "Use 'Extra vars' for: plane_axes=xz|xy|yz, num_angles, num_points, interior_scale, seed."
+            ),
+            EquationItem(
+                "lt_C_diagT_3d_characterise",
+                "LT +C: Characterise feasible C in 3D diag-T space",
+                "Compute an approximate boundary of the feasible '+C' region in full diag-T space (qubits only) and test convertibility on random interior points.\n"
+                "Use 'Extra vars' for: num_dirs, num_points, interior_scale, seed."
+            ),
+            EquationItem(
+                "local_gp_closure_test",
+                "Objective 2: LT closure under random local GP channels",
+                "Generate LT states (random→LT projection), construct random local Gibbs-preserving channels on A and A', apply them, and verify the outputs remain LT (numerically).\n"
+                "Use 'Extra vars' for: num_states, num_channels, seed."
+            ),
+            EquationItem(
+                "extract_local_channels",
+                "Objective 3: Extract concrete local GP channels (JA,JAp)",
+                "For a chosen LT ray mapping (qubits), run the two-step local GP SDP and save the resulting Choi matrices JA and JAp (plus intermediate ω) to local_gp_channels.npy.\n"
+                "Use 'Extra vars' for: label=XX|YY|..., p_src, p_tgt."
             ),
         ]
 

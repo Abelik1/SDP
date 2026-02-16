@@ -454,6 +454,151 @@ class LTSDPSystem:
         return kraus
 
     # ==========================================
+    # Local-channel utilities (random GP + apply)
+    # ==========================================
+
+    def _choi_tr_out_numpy(self, J: np.ndarray, d_in: int, d_out: int) -> np.ndarray:
+        """Compute Tr_out(J) as a (d_in x d_in) matrix (numpy)."""
+        out = np.zeros((d_in, d_in), dtype=complex)
+        for m in range(d_in):
+            for n in range(d_in):
+                s = 0.0 + 0.0j
+                for mu in range(d_out):
+                    s += J[mu * d_in + m, mu * d_in + n]
+                out[m, n] = s
+        return 0.5 * (out + out.conj().T)
+
+    def choi_diagnostics(
+        self,
+        J: np.ndarray,
+        d_in: int,
+        d_out: int,
+        gamma_in: np.ndarray | None = None,
+        gamma_out: np.ndarray | None = None,
+        tol: float = 1e-12,
+    ) -> dict:
+        """Basic CPTP + (optional) Gibbs-preservation diagnostics for a Choi matrix."""
+        Jh = 0.5 * (J + J.conj().T)
+
+        # CP: smallest eigenvalue
+        w = np.linalg.eigvalsh(Jh)
+        min_eig = float(np.min(np.real(w)))
+
+        # TP: Tr_out(J)=I_in
+        Tr_out = self._choi_tr_out_numpy(Jh, d_in=d_in, d_out=d_out)
+        tp_err = float(norm(Tr_out - np.eye(d_in), "fro"))
+
+        gp_err = None
+        if (gamma_in is not None) and (gamma_out is not None):
+            Phi_gamma = self.choi_apply_numpy(Jh, gamma_in, d_in=d_in, d_out=d_out)
+            gp_err = float(norm(Phi_gamma - gamma_out, "fro"))
+
+        return {
+            "min_eig_J": min_eig,
+            "tp_fro_err": tp_err,
+            "gp_fro_err": gp_err,
+        }
+
+    def find_random_local_gp_channel(
+        self,
+        which: str = "A",
+        solver=None,
+        tol=None,
+        eps_gibbs: float | None = None,
+        seed: int | None = None,
+        verbose: bool = False,
+    ) -> tuple[np.ndarray | None, str, dict]:
+        """
+        Construct a *random* local Gibbs-preserving channel Φ on subsystem A (or A') by solving:
+
+          maximise    Re Tr(K^† J)
+          subject to  J ⪰ 0, Tr_out(J)=I,  ||Φ(γ) - γ||_F ≤ eps_gibbs
+
+        Returns (J, status, diagnostics). If infeasible/failed returns (None, status, diagnostics).
+        """
+        which_u = str(which).strip().upper()
+        if which_u not in ("A", "AP", "A'"):
+            raise ValueError("which must be 'A' or 'Ap'")
+        if which_u == "A":
+            d = self.dA
+            gamma = self.gammaA
+        else:
+            d = self.dAp
+            gamma = self.gammaAp
+
+        solver_actual = self._select_solver(solver, verbose=verbose)
+        tol_val = self.tol_default if tol is None else float(tol)
+        eps_g = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
+
+        rng = np.random.default_rng(seed)
+        R = rng.normal(size=(d * d, d * d)) + 1j * rng.normal(size=(d * d, d * d))
+        K = 0.5 * (R + R.conj().T)  # Hermitian objective
+
+        J = cp.Variable((d * d, d * d), complex=True, name=f"J_rand_{which_u}")
+        cons = [J >> 0]
+        cons += self._choi_tp_constraints(J, d_in=d, d_out=d)
+        cons += [cp.norm(self._choi_apply_cvx(J, gamma, d_in=d, d_out=d) - gamma, "fro") <= eps_g]
+
+        obj = cp.Maximize(cp.real(cp.trace(K.conj().T @ J)))
+        prob = cp.Problem(obj, cons)
+
+        scs_kwargs = self._scs_kwargs(tol=tol_val, verbose=verbose) if solver_actual == "SCS" else {"verbose": verbose}
+
+        try:
+            prob.solve(solver=solver_actual, **scs_kwargs)
+        except Exception as e:
+            return None, f"random-LGP solver error: {e}", {"status": "error"}
+
+        if prob.status not in ["optimal", "optimal_inaccurate"]:
+            return None, f"random-LGP status: {prob.status}", {"status": prob.status}
+
+        if J.value is None:
+            return None, f"random-LGP status: {prob.status} (no J)", {"status": prob.status}
+
+        Jv = 0.5 * (J.value + J.value.conj().T)
+        diag = self.choi_diagnostics(Jv, d_in=d, d_out=d, gamma_in=gamma, gamma_out=gamma, tol=1e-12)
+        diag["status"] = prob.status
+        return Jv, f"{prob.status}", diag
+
+    def apply_local_channel_A(self, rho: np.ndarray, J_A: np.ndarray) -> np.ndarray:
+        """Apply local channel (Choi J_A) on subsystem A to a bipartite operator rho (numpy)."""
+        dA, dAp = self.dims
+        rho_h = 0.5 * (rho + rho.conj().T)
+        blocks = rho_h.reshape(dA, dAp, dA, dAp)
+        out = np.zeros((dA * dAp, dA * dAp), dtype=complex)
+        for i in range(dA):
+            for j in range(dA):
+                Eij = np.zeros((dA, dA), dtype=complex)
+                Eij[i, j] = 1.0
+                Phi_Eij = self.choi_apply_numpy(J_A, Eij, d_in=dA, d_out=dA)
+                Tij = blocks[i, :, j, :]
+                out += np.kron(Phi_Eij, Tij)
+        out = 0.5 * (out + out.conj().T)
+        tr = np.trace(out)
+        if abs(tr) > 1e-15:
+            out = out / tr
+        return 0.5 * (out + out.conj().T)
+
+    def apply_local_channel_Ap(self, rho: np.ndarray, J_Ap: np.ndarray) -> np.ndarray:
+        """Apply local channel (Choi J_Ap) on subsystem A' to a bipartite operator rho (numpy)."""
+        dA, dAp = self.dims
+        rho_h = 0.5 * (rho + rho.conj().T)
+        blocks = rho_h.reshape(dA, dAp, dA, dAp)
+        out = np.zeros((dA * dAp, dA * dAp), dtype=complex)
+        for a in range(dAp):
+            for b in range(dAp):
+                Eab = np.zeros((dAp, dAp), dtype=complex)
+                Eab[a, b] = 1.0
+                Phi_Eab = self.choi_apply_numpy(J_Ap, Eab, d_in=dAp, d_out=dAp)
+                Xab = blocks[:, a, :, b]
+                out += np.kron(Xab, Phi_Eab)
+        out = 0.5 * (out + out.conj().T)
+        tr = np.trace(out)
+        if abs(tr) > 1e-15:
+            out = out / tr
+        return 0.5 * (out + out.conj().T)
+
+    # ==========================================
     # Global GP (channel extraction + feasibility)
     # ==========================================
 

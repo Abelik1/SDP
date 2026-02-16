@@ -664,3 +664,152 @@ class LTAnalyzer:
             "violations": violations,
         }
 
+
+
+
+    # ==========================================
+    # NEW: Characterise qubit diag-T C-space (2D/3D)
+    # ==========================================
+
+    def diagT_plane_boundary(
+        self,
+        axes: tuple[str, str] = ("x", "z"),
+        num_angles: int = 181,
+        include_negative: bool = True,
+        tol: float = 1e-12,
+    ) -> dict:
+        """
+        Boundary of the feasible LT slice in a 2D plane of diag correlation coordinates.
+
+        We restrict to qubit-diag correlations:
+          C = (1/4)(tx XX + ty YY + tz ZZ),
+        but only two coordinates are active, chosen by `axes`, e.g. ('x','z') means ty=0.
+
+        For each direction u(θ) in that plane, compute ray bounds p_min,p_max for
+          ρ(p) = γ⊗γ + p C(u),
+        and convert to boundary coordinates t = p*u.
+
+        Returns:
+          {
+            "axes": axes,
+            "theta": (num_angles,),
+            "u": (num_angles,3),
+            "p_min": (num_angles,),
+            "p_max": (num_angles,),
+            "t_min": (num_angles,3),   # boundary points for p_min
+            "t_max": (num_angles,3),   # boundary points for p_max
+          }
+        """
+        system = self.system
+        if system.dims != (2, 2):
+            raise ValueError("diagT_plane_boundary requires dims=(2,2)")
+
+        axmap = {"x": 0, "y": 1, "z": 2}
+        a1 = str(axes[0]).lower().strip()
+        a2 = str(axes[1]).lower().strip()
+        if a1 not in axmap or a2 not in axmap or a1 == a2:
+            raise ValueError("axes must be two distinct elements from {'x','y','z'}")
+
+        k1 = axmap[a1]
+        k2 = axmap[a2]
+
+        theta = np.linspace(0.0, 2.0 * np.pi, int(num_angles), endpoint=True)
+        u = np.zeros((theta.size, 3), dtype=float)
+        u[:, k1] = np.cos(theta)
+        u[:, k2] = np.sin(theta)
+
+        p_min = np.zeros(theta.size, dtype=float)
+        p_max = np.zeros(theta.size, dtype=float)
+
+        for i in range(theta.size):
+            tx, ty, tz = u[i]
+            C0 = system.qubit_C_from_diag_T(tx, ty, tz)
+            pmin, pmax = system.lt_ray_p_bounds(C0, tol=tol)
+            p_min[i] = pmin
+            p_max[i] = pmax
+
+        t_min = p_min[:, None] * u
+        t_max = p_max[:, None] * u
+
+        out = {
+            "axes": (a1, a2),
+            "theta": theta,
+            "u": u,
+            "p_min": p_min,
+            "p_max": p_max,
+            "t_min": t_min,
+            "t_max": t_max,
+        }
+        if not include_negative:
+            # keep the "positive" side only (p_max)
+            out["t_min"] = None
+            out["p_min"] = None
+        return out
+
+    @staticmethod
+    def _fibonacci_sphere(num_dirs: int) -> np.ndarray:
+        """Return (num_dirs,3) approximately-uniform unit vectors on S^2."""
+        n = int(num_dirs)
+        if n <= 0:
+            return np.zeros((0, 3), dtype=float)
+        i = np.arange(n, dtype=float) + 0.5
+        phi = 2.0 * np.pi * i / ((1.0 + 5.0 ** 0.5) / 2.0)
+        z = 1.0 - 2.0 * i / n
+        r = np.sqrt(np.clip(1.0 - z * z, 0.0, 1.0))
+        x = r * np.cos(phi)
+        y = r * np.sin(phi)
+        u = np.stack([x, y, z], axis=1)
+        return u
+
+    def diagT_3d_boundary(
+        self,
+        num_dirs: int = 600,
+        include_negative: bool = True,
+        tol: float = 1e-12,
+    ) -> dict:
+        """
+        Boundary of the feasible LT slice in full (tx,ty,tz) diag correlation space.
+
+        For each unit direction u on S^2, compute ray bounds p_min,p_max for
+          ρ(p) = γ⊗γ + p C(u)
+        where C(u) = (1/4)(u_x XX + u_y YY + u_z ZZ), and convert to boundary points
+          t = p*u.
+
+        Returns:
+          {
+            "u": (num_dirs,3),
+            "p_min": (num_dirs,),
+            "p_max": (num_dirs,),
+            "t_min": (num_dirs,3),
+            "t_max": (num_dirs,3),
+          }
+        """
+        system = self.system
+        if system.dims != (2, 2):
+            raise ValueError("diagT_3d_boundary requires dims=(2,2)")
+
+        u = self._fibonacci_sphere(num_dirs)
+        p_min = np.zeros(u.shape[0], dtype=float)
+        p_max = np.zeros(u.shape[0], dtype=float)
+
+        for i in range(u.shape[0]):
+            tx, ty, tz = u[i]
+            C0 = system.qubit_C_from_diag_T(tx, ty, tz)
+            pmin, pmax = system.lt_ray_p_bounds(C0, tol=tol)
+            p_min[i] = pmin
+            p_max[i] = pmax
+
+        t_min = p_min[:, None] * u
+        t_max = p_max[:, None] * u
+
+        out = {
+            "u": u,
+            "p_min": p_min,
+            "p_max": p_max,
+            "t_min": t_min,
+            "t_max": t_max,
+        }
+        if not include_negative:
+            out["t_min"] = None
+            out["p_min"] = None
+        return out
