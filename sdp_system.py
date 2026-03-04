@@ -234,6 +234,198 @@ class LTSDPSystem:
     # ==========================================
     # LT family helpers (ray + qubit correlation tensor)
     # ==========================================
+        # ==========================================
+    # Verification + multistart for Local GP
+    # ==========================================
+
+    def _apply_kraus_on_A(self, rho: np.ndarray, kraus: list[np.ndarray]) -> np.ndarray:
+        """Apply Kraus {K} on subsystem A: ρ -> Σ (K⊗I) ρ (K†⊗I). No renormalization."""
+        dA, dAp = self.dims
+        IAp = np.eye(dAp, dtype=complex)
+        rho_h = 0.5 * (rho + rho.conj().T)
+        out = np.zeros_like(rho_h, dtype=complex)
+        for K in kraus:
+            Kext = np.kron(K, IAp)
+            out += Kext @ rho_h @ Kext.conj().T
+        return 0.5 * (out + out.conj().T)
+
+    def _apply_kraus_on_Ap(self, rho: np.ndarray, kraus: list[np.ndarray]) -> np.ndarray:
+        """Apply Kraus {K} on subsystem A': ρ -> Σ (I⊗K) ρ (I⊗K†). No renormalization."""
+        dA, dAp = self.dims
+        IA = np.eye(dA, dtype=complex)
+        rho_h = 0.5 * (rho + rho.conj().T)
+        out = np.zeros_like(rho_h, dtype=complex)
+        for K in kraus:
+            Kext = np.kron(IA, K)
+            out += Kext @ rho_h @ Kext.conj().T
+        return 0.5 * (out + out.conj().T)
+
+    def apply_local_choi_A_no_norm(self, rho: np.ndarray, J_A: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
+        dA, _ = self.dims
+        kraus = self.kraus_from_choi(J_A, d_in=dA, d_out=dA, tol=tol_kraus)
+        return self._apply_kraus_on_A(rho, kraus)
+
+    def apply_local_choi_Ap_no_norm(self, rho: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
+        _, dAp = self.dims
+        kraus = self.kraus_from_choi(J_Ap, d_in=dAp, d_out=dAp, tol=tol_kraus)
+        return self._apply_kraus_on_Ap(rho, kraus)
+
+    def apply_local_product_choi_no_norm(
+        self, rho: np.ndarray, J_A: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12
+    ) -> np.ndarray:
+        # maps commute; order doesn't matter
+        out = self.apply_local_choi_A_no_norm(rho, J_A, tol_kraus=tol_kraus)
+        out = self.apply_local_choi_Ap_no_norm(out, J_Ap, tol_kraus=tol_kraus)
+        return out
+
+    def verify_local_gp_details(
+        self,
+        tau: np.ndarray,
+        tau_p: np.ndarray,
+        details: dict,
+        eps_map: float | None = None,
+        eps_gibbs: float | None = None,
+        tol_psd: float = 1e-7,
+        tol_tp: float = 1e-6,
+        tol_kraus: float = 1e-12,
+    ) -> dict:
+        """
+        Verifies a *claimed* local solution by explicit channel application + diagnostics.
+
+        Returns dict with:
+          - ok (bool)
+          - map_err, gp_err_A, gp_err_Ap, tp_err_A, tp_err_Ap, min_eig_JA, min_eig_JAp
+          - omega_consistency_err (if omega provided)
+        """
+        dA, dAp = self.dims
+        eps_map = self.eps_eq_local if eps_map is None else float(eps_map)
+        eps_g = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
+
+        J_A = details.get("J_A", None)
+        J_Ap = details.get("J_Ap", None)
+        omega = details.get("omega", None)
+
+        if J_A is None or J_Ap is None:
+            return {"ok": False, "reason": "missing_J"}
+
+        J_Ah = 0.5 * (J_A + J_A.conj().T)
+        J_Aph = 0.5 * (J_Ap + J_Ap.conj().T)
+
+        diagA = self.choi_diagnostics(J_Ah, d_in=dA, d_out=dA, gamma_in=self.gammaA, gamma_out=self.gammaA)
+        diagAp = self.choi_diagnostics(J_Aph, d_in=dAp, d_out=dAp, gamma_in=self.gammaAp, gamma_out=self.gammaAp)
+
+        mapped = self.apply_local_product_choi_no_norm(tau, J_Ah, J_Aph, tol_kraus=tol_kraus)
+        map_err = float(norm(0.5 * (mapped + mapped.conj().T) - 0.5 * (tau_p + tau_p.conj().T), "fro"))
+
+        omega_err = None
+        if omega is not None:
+            omega_pred = self.apply_local_choi_A_no_norm(tau, J_Ah, tol_kraus=tol_kraus)
+            omega_err = float(norm(0.5 * (omega_pred + omega_pred.conj().T) - 0.5 * (omega + omega.conj().T), "fro"))
+
+        ok = True
+        # CP
+        if diagA["min_eig_J"] < -tol_psd or diagAp["min_eig_J"] < -tol_psd:
+            ok = False
+        # TP
+        if diagA["tp_fro_err"] > tol_tp or diagAp["tp_fro_err"] > tol_tp:
+            ok = False
+        # GP
+        if (diagA["gp_fro_err"] is None) or (diagAp["gp_fro_err"] is None):
+            ok = False
+        else:
+            if diagA["gp_fro_err"] > eps_g + 10 * tol_tp or diagAp["gp_fro_err"] > eps_g + 10 * tol_tp:
+                ok = False
+        # Mapping
+        if map_err > eps_map + 10 * tol_tp:
+            ok = False
+
+        return {
+            "ok": ok,
+            "map_err": map_err,
+            "omega_consistency_err": omega_err,
+            "min_eig_JA": diagA["min_eig_J"],
+            "tp_err_A": diagA["tp_fro_err"],
+            "gp_err_A": diagA["gp_fro_err"],
+            "min_eig_JAp": diagAp["min_eig_J"],
+            "tp_err_Ap": diagAp["tp_fro_err"],
+            "gp_err_Ap": diagAp["gp_fro_err"],
+        }
+
+    def check_local_gp_feasible_multistart(
+        self,
+        tau: np.ndarray,
+        tau_p: np.ndarray,
+        solver=None,
+        tol=None,
+        eps_map: float | None = None,
+        eps_gibbs: float | None = None,
+        n_random_starts: int = 6,
+        seed: int = 0,
+        verify: bool = True,
+        verbose: bool = False,
+        return_details: bool = False,
+    ):
+        """
+        Multistart wrapper around the existing two-step heuristic.
+        Goal: reduce false negatives that look like "fragmentation".
+
+        Strategy:
+          - try multiple omega_hint choices (deterministic + random GP-preimages).
+          - take the best residual solution found.
+          - optionally verify it with explicit channel application.
+        """
+        eps_map_val = self.eps_eq_local if eps_map is None else float(eps_map)
+        eps_g_val = self.eps_gibbs if eps_gibbs is None else float(eps_gibbs)
+
+        tau_h = 0.5 * (tau + tau.conj().T)
+        tau_p_h = 0.5 * (tau_p + tau_p.conj().T)
+
+        hints = [
+            None,                         # default (close to tau)
+            tau_p_h,                      # bias omega toward target
+            0.5 * (tau_h + tau_p_h),      # midpoint
+            kron(self.gammaA, self.gammaAp),  # product thermal
+        ]
+
+        # Random starts: pick random local GP channel on A, generate omega=(G_A⊗I)(tau)
+        rng = np.random.default_rng(seed)
+        for k in range(int(n_random_starts)):
+            J, st, _diag = self.find_random_local_gp_channel(which="A", solver=solver, tol=tol, eps_gibbs=eps_g_val, seed=int(rng.integers(0, 10**9)))
+            if J is None:
+                continue
+            omega_k = self.apply_local_choi_A_no_norm(tau_h, J)
+            hints.append(omega_k)
+
+        best = {"res": np.inf, "feasible": False, "status": "no_attempt", "details": None, "verify": None}
+
+        for idx, h in enumerate(hints):
+            feas, status, det = self.check_local_gp_feasible(
+                tau_h,
+                tau_p_h,
+                solver=solver,
+                tol=tol,
+                eps_map=eps_map_val,
+                eps_gibbs=eps_g_val,
+                omega_hint=h,
+                verbose=verbose,
+                return_details=True,
+            )
+            res = float(det.get("residual", np.inf))
+            if res < best["res"]:
+                best.update({"res": res, "feasible": bool(feas), "status": status, "details": det})
+
+            if feas and verify:
+                v = self.verify_local_gp_details(tau_h, tau_p_h, det, eps_map=eps_map_val, eps_gibbs=eps_g_val)
+                best["verify"] = v
+                if v["ok"]:
+                    if return_details:
+                        return True, f"multistart_ok (hint#{idx}) | {status}", {"best": best, "hint_index": idx}
+                    return True, f"multistart_ok (hint#{idx}) | {status}"
+
+        # If nothing verified, still return best attempt (useful as a 'gap' score)
+        if return_details:
+            return (best["feasible"] and (not verify)), f"multistart_best_only | {best['status']}", {"best": best}
+        return (best["feasible"] and (not verify)), f"multistart_best_only | {best['status']}"
 
     @staticmethod
     def _invsqrt_psd(mat: np.ndarray, tol: float = 1e-12) -> np.ndarray:

@@ -1191,6 +1191,7 @@ def backend_run(config, system, analyzer):
         I_vals = [mutual_information(rho, system.dims) for rho in states]
         order = np.argsort(-np.array(I_vals))
         states = [states[k] for k in order]
+        tcoords = tcoords[order]
         # Convertibility adjacency (Global GP vs Local GP)
         N = len(states)
         I_node = np.zeros(N, dtype=float)
@@ -1306,7 +1307,7 @@ def backend_run(config, system, analyzer):
         I_vals = [mutual_information(rho, system.dims) for rho in states]
         order = np.argsort(-np.array(I_vals))
         states = [states[k] for k in order]
-        
+        tcoords = tcoords[order]
         N = len(states)
         I_node = np.zeros(N, dtype=float)
         svalsT = np.zeros((N, 3), dtype=float)

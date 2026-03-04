@@ -416,3 +416,130 @@ recomputed step errors using numpy application of Choi
 Output file: local_gp_channels.npy
 
 This is presentation-grade: you can say “here is the explicit map my SDP found”.
+Summary: what we discovered about “fragmentation” in Local GP
+
+Your Global GP ordered heatmap is valid: after sorting states by mutual information (equivalently 
+𝐷
+(
+𝜌
+∥
+𝛾
+⊗
+𝛾
+)
+D(ρ∥γ⊗γ) on LT), the convertibility matrix becomes largely upper-triangular, matching the monotonicity theorem.
+
+The Local GP “fragmentation” dots (off-diagonal yellow entries) are not reliable under your original Local feasibility routine.
+
+Reason: check_local_gp_feasible() is a two-step heuristic (find 
+𝐺
+𝐴
+G
+A
+	​
+
+ and an intermediate 
+𝜔
+ω, then find 
+𝐺
+𝐴
+′
+G
+A
+′
+	​
+
+ mapping 
+𝜔
+→
+𝜏
+′
+ω→τ
+′
+). This procedure is not equivalent to solving the true constraint 
+(
+𝐺
+𝐴
+⊗
+𝐺
+𝐴
+′
+)
+(
+𝜏
+)
+=
+𝜏
+′
+(G
+A
+	​
+
+⊗G
+A
+′
+	​
+
+)(τ)=τ
+′
+, so it can output false positives.
+
+We added explicit verification: reconstruct 
+𝐽
+𝐴
+,
+𝐽
+𝐴
+′
+J
+A
+	​
+
+,J
+A
+′
+	​
+
+, apply 
+(
+𝐺
+𝐴
+⊗
+𝐺
+𝐴
+′
+)
+(G
+A
+	​
+
+⊗G
+A
+′
+	​
+
+) to the source state (no renormalization), and measure the actual mapping error. This showed that the “feasible” edges from the heuristic were wrong.
+
+Concrete audit result (diag-T 3D sample): two Local edges found by the heuristic (pairs 
+(
+4
+,
+12
+)
+(4,12) and 
+(
+4
+,
+14
+)
+(4,14)) failed verification with large mapping errors (~0.19 and ~0.24 in Frobenius norm), despite TP/GP residuals being tiny. Multistart+verify found 0 verified off-diagonal edges.
+
+Therefore the correct, defensible conclusion is not “interesting fragmented components with rare pathways,” but:
+
+Under verified Local GP, convertibility in the sampled 3D diag-T LT interior is extremely sparse / near-empty, i.e., massive incomparability.
+
+The main phenomenon is the collapse from a rich global preorder to a highly sparse local partial order.
+
+The 1D ray test remains meaningful: along a fixed 1-parameter family, Local GP behaves like a monotone chain (no incomparability observed), while in higher-dimensional families the relation collapses—evidence the obstruction is genuinely multidimensional (but you should phrase it as “incomparability” rather than “fragmentation”).
+
+Presentation edits: remove/soften claims that convex optimization “can’t give false solutions” for Local; state that Local edges must be verified and that the previously shown Local dots were heuristic artifacts. Global narrative stays essentially unchanged.
