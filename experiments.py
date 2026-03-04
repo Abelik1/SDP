@@ -10,16 +10,77 @@ from utils import (
 )
 import matplotlib
 matplotlib.use("Qt5Agg")
-import numpy as np
+
 import matplotlib.pyplot as plt
 import json
-from sdp_system import LTSDPSystem, dagger, mutual_information
+from sdp_system import LTSDPSystem, dagger, mutual_information, paulis
 from sdp_analysis import LTAnalyzer
 from sdp_gui import LTSDPWindow
 # =========================
 # Structured LT family experiments (no GUI changes)
 # =========================
+import numpy as np
 
+def local_edge_test(system, tau, tau_p, vars_dict, *, verbose=False):
+    """
+    Local edge test with modes:
+      - local_edge_mode=single     : old heuristic (fast, can have false positives)
+      - local_edge_mode=multistart : multistart but NOT verified (still heuristic)
+      - local_edge_mode=verified   : multistart + verify_local_gp_details (recommended)
+
+    Returns: (ok: bool, status: str, residual: float)
+      residual = best heuristic residual (gap score), even in verified mode.
+    """
+    mode = str(vars_dict.get("local_edge_mode", "verified")).strip().lower()
+    n_random_starts = int(vars_dict.get("n_random_starts", 6))
+    seed = int(vars_dict.get("seed", 0))
+
+    if mode in ("verified", "verify"):
+        ok, status, det = system.check_local_gp_feasible_multistart(
+            tau, tau_p,
+            solver=system.solver_default,
+            tol=system.tol_default,
+            eps_map=system.eps_eq_local,
+            eps_gibbs=system.eps_gibbs,
+            n_random_starts=n_random_starts,
+            seed=seed,
+            verify=True,
+            verbose=verbose,
+            return_details=True,
+        )
+        best = (det or {}).get("best", {}) if isinstance(det, dict) else {}
+        res = float(best.get("res", np.inf))
+        return bool(ok), str(status), res
+
+    if mode in ("multistart", "multi"):
+        ok, status, det = system.check_local_gp_feasible_multistart(
+            tau, tau_p,
+            solver=system.solver_default,
+            tol=system.tol_default,
+            eps_map=system.eps_eq_local,
+            eps_gibbs=system.eps_gibbs,
+            n_random_starts=n_random_starts,
+            seed=seed,
+            verify=False,
+            verbose=verbose,
+            return_details=True,
+        )
+        best = (det or {}).get("best", {}) if isinstance(det, dict) else {}
+        res = float(best.get("res", np.inf))
+        return bool(ok), str(status), res
+
+    # single (legacy)
+    ok, status, det = system.check_local_gp_feasible(
+        tau, tau_p,
+        solver=system.solver_default,
+        tol=system.tol_default,
+        eps_map=system.eps_eq_local,
+        eps_gibbs=system.eps_gibbs,
+        verbose=verbose,
+        return_details=True,
+    )
+    res = float((det or {}).get("residual", np.inf))
+    return bool(ok), str(status), res
 def _invsqrt_psd(mat, tol=1e-12):
     """Hermitian PSD inverse square root via eigendecomposition."""
     H = 0.5 * (mat + mat.conj().T)
@@ -853,13 +914,9 @@ def backend_run(config, system, analyzer):
                 )
                 G[i, j] = 1 if g_ok else 0
 
-                l_ok, l_status, l_det = system.check_local_gp_feasible(
-                    states[i], states[j],
-                    solver=system.solver_default, tol=system.tol_default, verbose=False,
-                    return_details=True
-                )
+                l_ok, l_status, l_res = local_edge_test(system, states[i], states[j], vars_dict, verbose=False)
                 L[i, j] = 1 if l_ok else 0
-                L_res[i, j] = float(l_det.get("residual", np.inf))
+                L_res[i, j] = float(l_res)
 
         # Incomparability under LGP
         unordered = 0
@@ -1225,9 +1282,7 @@ def backend_run(config, system, analyzer):
                 )
                 G[i, j] = 1 if g_ok else 0
 
-                l_ok, _ = system.check_local_gp_feasible(
-                    states[i], states[j], solver=system.solver_default, tol=system.tol_default, verbose=False, return_details=False
-                )
+                l_ok, _, _ = local_edge_test(system, states[i], states[j], vars_dict, verbose=False)
                 L[i, j] = 1 if l_ok else 0
 
         fig, ax = plt.subplots()
@@ -1337,9 +1392,7 @@ def backend_run(config, system, analyzer):
                 )
                 G[i, j] = 1 if g_ok else 0
 
-                l_ok, _ = system.check_local_gp_feasible(
-                    states[i], states[j], solver=system.solver_default, tol=system.tol_default, verbose=False, return_details=False
-                )
+                l_ok, _, _ = local_edge_test(system, states[i], states[j], vars_dict, verbose=False)
                 L[i, j] = 1 if l_ok else 0
 
         fig, ax = plt.subplots()

@@ -1,0 +1,4 @@
+d=3 commuting LT sampling (n=50, seed=0, sinkhorn_iters=300)
+mean I = 0.062688, std I = 0.0604486
+mean D = 0.062688, std D = 0.0604486
+Saved: I_values.npy, D_values.npy, d3_commuting_MI_hist.png

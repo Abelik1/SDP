@@ -1,321 +1,532 @@
-# Capstone Experiments Overview  
-Hierarchy of Locally Thermal States under Global and Local Gibbs-Preserving Operations  
+# LT/GP SDP Capstone Toolkit
 
-Symmetric bipartite system:  A ⊗ A′  
-Identical Hamiltonians H_A = H_A′  
-Inverse temperature β  
+Research tool for **locally-thermal (LT) bipartite states** and **Gibbs-preserving operations** (global GP and local GP). Built around **CVXPY** SDPs and a **PyQt5 GUI**.
 
-Thermal state:
-γ_X = e^{-βH_X} / Z  
+This repo started as a single-script prototype; it is now being refactored into a coherent package while preserving legacy experiments.
 
-Global reference Gibbs state:
-γ_{AA′} = γ_A ⊗ γ_A′  
+---
 
-------------------------------------------------------------
-CORE DEFINITIONS
-------------------------------------------------------------
+## 0) System + Definitions (capstone-level)
 
-Locally Thermal (LT) set:
+### Physical setup
 
-Tr_{A′}(ρ) = γ_A  
-Tr_A(ρ) = γ_A′  
+We study a bipartite system \(A \otimes A'\) with local Hamiltonians
 
-Equivalent structural decomposition:
+\[
+H_A,\; H_{A'}
+\]
 
-ρ = γ ⊗ γ + C  
+and inverse temperature \(\beta\). The local Gibbs (thermal) states are
 
-with:
+\[
+\gamma_X = \frac{e^{-\beta H_X}}{Z_X}.
+\]
 
-Tr_A(C) = 0  
-Tr_B(C) = 0  
-ρ ⪰ 0  
+The reference global Gibbs state is the product
 
-The LT set is therefore:
-- An affine subspace (zero-marginal constraint)
-- Intersected with the PSD cone
-- Convex
-- High-dimensional in state space
+\[
+\gamma_{AA'} = \gamma_A \otimes \gamma_{A'}.
+\]
 
-Thermodynamic monotone:
+### Locally-thermal (LT) states
 
-D(ρ || γ⊗γ)
+A bipartite state \(\rho_{AA'}\) is **locally-thermal** iff
 
-On the LT set:
+\[
+\operatorname{Tr}_{A'}(\rho) = \gamma_A, \qquad
+\operatorname{Tr}_{A}(\rho) = \gamma_{A'}.
+\]
 
-D(ρ || γ⊗γ) = I(A:B)
+This defines a convex spectrahedron: PSD + affine marginal constraints.
 
-Thus LT states collapse to a 1D manifold in (D, I) coordinates,
-but remain high-dimensional operationally.
+We call states **LNT** (locally non-thermal) when one or both marginals differ from the corresponding Gibbs state.
 
-------------------------------------------------------------
-EXPERIMENT 1  
-LT Membership Verification
-------------------------------------------------------------
+### Gibbs-preserving operations (GP)
 
-Given arbitrary ρ:
+A CPTP map \(\mathcal{G}\) is **global Gibbs-preserving** if
 
-Check:
-- Tr_B(ρ) == γ_A
-- Tr_A(ρ) == γ_A′
+\[
+\mathcal{G}(\gamma_{AA'}) = \gamma_{AA'}.
+\]
 
-Uses exact linear constraints (dimension-independent).
+**Global GP convertibility** (decision problem):
 
-Conclusion:
-Implementation characterises the full LT set,
-not a restricted ansatz.
+Given \(\tau,\tau'\), decide whether there exists a CPTP map \(\mathcal{G}\) such that
 
-------------------------------------------------------------
-EXPERIMENT 2  
-TFD → Dephased TFD (Global GP vs Local GP)
-------------------------------------------------------------
+\[
+\mathcal{G}(\gamma_{AA'})=\gamma_{AA'}, \qquad
+\mathcal{G}(\tau)=\tau'.
+\]
 
-Initial state: Thermofield Double (TFD)
+This is solved via a Choi SDP.
 
-|TFD⟩ = Σ_i √g_i |E_i⟩_A ⊗ |E_i⟩_{A′}
+### Local GP (LGP)
 
-Properties:
-- Pure
-- Locally thermal
-- Maximally correlated in energy basis
+Local GP convertibility asks for a product channel
 
-Dephased state:
+\[
+\mathcal{G} = \mathcal{G}_A \otimes \mathcal{G}_{A'}
+\]
 
-τ_deph = Σ_i g_i |E_i E_i⟩⟨E_i E_i|
+with each factor CPTP and Gibbs-fixing locally:
 
-Test reachability under:
-- Global GP
-- Local GP
+\[
+\mathcal{G}_A(\gamma_A)=\gamma_A, \qquad
+\mathcal{G}_{A'}(\gamma_{A'})=\gamma_{A'}.
+\]
 
-Results:
-- Global GP: feasible
-- Local GP: infeasible
+Exact feasibility is nonconvex due to the product constraint.
 
-Conclusion:
-Local Gibbs-preserving operations induce
-a strict partial order.
+**Important methodological note:** this repo contains a **heuristic** local solver (two-step with an intermediate \(\omega\)) which can produce **false positives** unless followed by explicit verification (see §6).
 
-------------------------------------------------------------
-EXPERIMENT 3  
-Projection onto LT (Trace-Distance SDP)
-------------------------------------------------------------
+---
 
-Given arbitrary ρ:
+## 1) What’s implemented
 
-Compute:
+### 1.1 LT generation + parameterizations
 
-min_{σ ∈ LT} ½ ||ρ − σ||₁
+- **General LT set**
+  - Enforced by PSD + partial-trace constraints in SDPs.
 
-Also compute projection onto classical LT.
+- **d = 2 (qubits)**
+  - Pauli/traceless basis correlation representation
 
-Observations:
-- Random states typically not LT.
-- Distance to classical LT > distance to LT.
+        ρ = γ⊗γ + Σ_ij C_ij B_i ⊗ B_j
 
-Conclusion:
-classical LT ⊂ LT strictly.
-Quantum correlations expand LT set.
+    with \(C \in \mathbb{R}^{3\times3}\).
 
-------------------------------------------------------------
-EXPERIMENT 4  
-C-Decomposition Diagnostics
-------------------------------------------------------------
+  - Ray families
 
-For LT states:
+        ρ(p) = γ⊗γ + p C₀
 
-C = ρ − γ⊗γ
+    with analytic PSD interval via whitening eigenvalues.
 
-Compute:
+  - Diagonal-T families used heavily in legacy experiments.
 
-- Frobenius norm ||C||_F
-- Trace distance ½||C||₁
-- Zero-marginal residuals
-- Operator-Schmidt singular values of C
+- **d = 3 (qutrits)**
 
-Purpose:
-Study full correlation structure,
-not just scalar monotones.
+  - Gell-Mann/traceless basis correlation representation
 
-Observation:
-Most LT states have small ||C||,
-strongly correlated states lie near extremal boundary.
+        C ∈ ℝ^(8×8)
 
-------------------------------------------------------------
-EXPERIMENT 5  
-LT Extremal Boundary via Support-Function SDP
-------------------------------------------------------------
+  - **Commuting / energy-diagonal LT subclass**
 
-Solve:
+    Sampled as a transport-polytope distribution with row/column sums matching \(\gamma\) (Sinkhorn scaling).
 
-max_{ρ ∈ LT} Tr(Kρ)
+---
 
-for random Hermitian K.
+### 1.2 Geometry probing
 
-Maps extremal LT states.
+**Closest-LT projection**
 
-Plot in:
-- (D, I)
-- correlation metrics space
+\[
+\min_{\sigma \in LT} \frac12 \|\rho - \sigma\|_1
+\]
 
-Observation:
-All LT states satisfy I = D,
-but boundary geometry is nontrivial in full operator space.
+implemented via trace-norm SDP.
 
-------------------------------------------------------------
-EXPERIMENT 6  
-LT Interior Sampling
-------------------------------------------------------------
+**Support function / boundary sampling**
 
-Project random states onto LT.
+\[
+\max_{\rho \in LT} \mathrm{Tr}(K\rho)
+\]
 
-Analyse:
+used to approximate the boundary and build LT-region figures.
 
-- Distribution of D
-- Distribution of ||C||
-- Operator-Schmidt spectra
+---
 
-Observation:
-Interior LT states cluster near low D.
-Strong quantum LT states are rare.
+### 1.3 Convertibility tests
 
-Conclusion:
-Thermodynamically 1D,
-operationally high-dimensional.
+- **Global GP convertibility**
 
-------------------------------------------------------------
-EXPERIMENT 7  
-Ray Family: ρ(p) = γ⊗γ + pC₀
-------------------------------------------------------------
+  Choi SDP with
 
-Structured LT family.
+  - CPTP constraints
+  - Gibbs-fixing constraint
+  - mapping constraint.
 
-Positivity bound computed analytically via whitening:
+- **Local GP (heuristic)**
 
-C̃ = (γ^{-1/2}⊗γ^{-1/2}) C₀ (γ^{-1/2}⊗γ^{-1/2})
+  Two-step solver with intermediate state \(\omega\).
 
-ρ(p) ⪰ 0  ⇔  I + p C̃ ⪰ 0
+  **Must be verified** (see §6).
 
-Compute valid interval [p_min, p_max].
+- **Local GP outer relaxation (convex)**
 
-Used to test:
+  Uses **PPT constraint on a joint Choi** as a necessary condition.
 
-- Global GP convertibility
-- Local GP convertibility
-- Monotone contraction hypotheses
+  Interpretation:
 
-------------------------------------------------------------
-EXPERIMENT 8  
-Diagonal Correlation Tensor Family (Qubit Case)
-------------------------------------------------------------
+  - infeasible PPT ⇒ infeasible local GP  
+  - feasible PPT ⇏ feasible local GP
 
-C = (1/4)(t_x XX + t_y YY + t_z ZZ)
+---
 
-Explore structured tensor directions.
+### 1.4 Monotones / diagnostics
 
-Compute:
+Computed for analysis and plots:
 
-- Correlation tensor T
-- Singular values s_k(T)
-- Mapping T → T′ under Local GP
+- Relative entropy to the product Gibbs
 
-Observation:
-Local GP acts as:
+  \[
+  D(\rho\Vert\gamma\otimes\gamma)
+  \]
 
-T′ = M_A T M_B^T
+- Mutual information \(I(A:A')\)
 
-Local hierarchy constrained by tensor structure.
+- Operator-Schmidt singular values of
 
-------------------------------------------------------------
-EXPERIMENT 9  
-Operator-Schmidt Spectrum of C
-------------------------------------------------------------
+  \[
+  C = \rho - \gamma\otimes\gamma
+  \]
 
-Reshape C across A|A′:
+  where \(C\) is reshaped into \((d_A^2, d_{A'}^2)\).
 
-C → matrix of shape (d_A², d_A′²)
+- Various correlation metrics used in legacy experiments.
 
-Compute singular values.
+---
 
-Used as structural signature.
+### 1.5 Reproducibility + run artifacts
 
-Hypothesis tested:
-Local GP may contract singular values
-beyond scalar monotones.
+New runs create folders under
 
-------------------------------------------------------------
-EXPERIMENT 10  
-LT Convertibility Graph (Global GP vs Local GP)
-------------------------------------------------------------
+    ./results/
 
-Fix finite LT set.
-Test pairwise reachability via SDP.
+containing
 
-Global GP:
-- Nearly total preorder
-- Governed by D = I
+    config.json
+    summary.txt
+    <other artifacts>
 
-Local GP:
-- Highly fragmented
-- Large incomparability rate
+Legacy experiments still write plots to
 
-Conclusion:
-Locality introduces non-scalar constraints.
+    ./png/
 
-------------------------------------------------------------
-EXPERIMENT 11  
-Explicit Global GP Channel Extraction
-------------------------------------------------------------
+The wrapper records which PNGs were produced during each run.
 
-Extract Choi matrix J_Φ for TFD → dephased mapping.
+---
 
-Verify:
-- J_Φ ⪰ 0
-- Trace-preserving
-- Φ(γ⊗γ) = γ⊗γ
-- Φ(τ_TFD) = τ_deph
+## 2) New refactor structure
 
-Residual errors ~ 10⁻¹⁰.
+Current transition state (legacy preserved; new package added):
 
-Conclusion:
-Existence upgraded to explicit channel construction.
+    .
+    ├── main.py                # entry point (new GUI)
+    ├── utils.py               # common utilities + system/analyzer builder
+    ├── sdp_system.py          # core SDPs + channel utilities
+    ├── sdp_analysis.py        # analyzer + state factories
+    ├── experiments.py         # legacy experiment dispatcher
+    ├── ltgp/                  # NEW package (refactor layer)
+    │   ├── __init__.py
+    │   ├── system.py
+    │   ├── registry.py
+    │   ├── ui.py
+    │   ├── backend.py
+    │   ├── experiments_ext.py
+    │   └── favorites.json
+    ├── audit.py
+    ├── audit_diagT3D.py
+    ├── results/
+    └── png/
 
-------------------------------------------------------------
-EXPERIMENT 12  
-Numerical Robustness Checks
-------------------------------------------------------------
+### Meaning of `ltgp`
 
-Verify:
-- Gibbs preservation residual
-- Mapping residual
-- Monotone non-increase
-- Solver stability
+`ltgp` stands for **Locally-Thermal + Gibbs-Preserving**.  
+It is a namespace package containing the refactored code.
 
-Conclusion:
-Observed structure is physical,
-not numerical artefact.
+---
 
-------------------------------------------------------------
-OVERALL STRUCTURE OF RESULTS
-------------------------------------------------------------
+## 3) Installation
 
-1. LT set is fully characterised via SDP:
-   exact marginal constraints + PSD.
+Recommended environment
 
-2. Thermodynamically:
-   LT collapses to I = D.
+- Python **3.10+**
+- Packages
+  - cvxpy
+  - numpy
+  - scipy
+  - matplotlib
+  - PyQt5
 
-3. Globally:
-   GP hierarchy nearly total,
-   governed by scalar monotone.
+Solvers:
 
-4. Locally:
-   Highly fragmented partial order.
+- **SCS** (default; robust for complex SDPs)
+- **MOSEK** (optional but faster)
+- CVXOPT may work depending on SDP form.
 
-5. Correlation tensor structure (C-decomposition)
-   reveals constraints invisible to scalar monotones.
+Example installation:
 
-Core Thesis:
+    python -m venv venv
 
-Local Gibbs-preserving operations impose structural
-constraints on the full correlation operator C,
-producing genuine operational incomparability
-within the locally thermal manifold.
+Windows:
+
+    venv\Scripts\activate
+
+Mac / Linux:
+
+    source venv/bin/activate
+
+Install dependencies:
+
+    pip install numpy scipy matplotlib pyqt5 cvxpy scs
+
+---
+
+## 4) Running the GUI
+
+Run:
+
+    python main.py
+
+GUI features:
+
+- Experiment groups A–E (no giant scrolling list)
+- Search/filter by id, title, or tags
+- Favorites pinning
+- Control panel for
+  - dimension \(d\)
+  - β
+  - solver
+  - tolerances
+  - sampling parameters
+- Results panel
+  - summary text
+  - run directory
+- Export last run summary as JSON.
+
+---
+
+## 5) Experiments (taxonomy)
+
+### A) LT Geometry
+
+- lt_region_geometry
+- lt_interior_geometry
+- lt_geometry_combined
+- closest_lt_distance
+
+### B) State Families
+
+- tfd_vs_dephased
+- mix_with_gamma
+- lt_family_ray_validation
+- lt_family_diagT_validation
+- lt_C_diagT_plane_characterise
+- lt_C_diagT_3d_characterise
+- d3_commuting_sampling
+
+### C) Convertibility
+
+- random_pair_gp_lgp
+- lt_convertibility_graph
+- extract_global_channel
+- extract_local_channels
+- local_gp_ppt_relax
+
+### D) Monotones & Invariants
+
+- sanity_checks
+
+### E) Utilities & Diagnostics
+
+- local_gp_closure_test
+- custom
+
+---
+
+## 6) Critical correctness: local edges, audits, and verification
+
+### Why the audit mattered
+
+The two-step local solver can return
+
+    single_ok = True
+
+while the resulting product channel **fails to map**
+
+\[
+\tau \rightarrow \tau'
+\]
+
+This is a **methodological issue**, not a physics result.
+
+Your audit scripts detect these failures:
+
+- audit_diagT3D.py  
+  finds “lost edges” where heuristic accepted but verification rejects.
+
+- audit.py  
+  performs broader checks (recovered/lost edges, transitivity violations).
+
+---
+
+### What the refactor does
+
+The verification machinery already exists in the core:
+
+    verify_local_gp_details
+    _no_norm
+
+The refactor ensures that plots and adjacency graphs **should default to verified edges**.
+
+If legacy adjacency loops are still used:
+
+- ensure adjacency builders call a **verified local-edge routine**
+- or implement
+
+    local_edge_mode = "verified"
+
+---
+
+### Recommended edge policy for report figures
+
+1. **Global GP edges**
+
+2. **Verified local edges**
+
+   - multistart solver
+   - explicit verification
+
+3. **PPT-relax edges** (optional)
+
+   - used as an outer bound.
+
+---
+
+## 7) Output files and where to find results
+
+### New experiments
+
+Located in
+
+    ltgp/experiments_ext.py
+
+Output to
+
+    results/<timestamp>_<eq_id>_<hash>/
+
+with
+
+    config.json
+    summary.txt
+
+and any generated artifacts.
+
+---
+
+### Legacy experiments
+
+Still write plots to
+
+    png/*.png
+
+The backend wrapper logs which PNG files were generated.
+
+---
+
+## 8) Migration notes
+
+### Keep (required)
+
+- main.py
+- utils.py
+- sdp_system.py
+- sdp_analysis.py
+- experiments.py
+- ltgp/
+
+### Safe to remove
+
+- sdp_gui.py
+
+### Recommended to keep
+
+- audit.py
+- audit_diagT3D.py
+
+These act as regression tests.
+
+---
+
+## 9) Developer notes / extending the tool
+
+### Adding a new experiment
+
+1. Register metadata in
+
+        ltgp/registry.py
+
+2. Implement experiment in
+
+        ltgp/experiments_ext.py
+
+3. Add dispatch case in
+
+        ltgp/backend.py
+
+---
+
+### Long sweeps / checkpointing
+
+Current state:
+
+- run folders are created
+- configs are saved
+
+Planned:
+
+- resumable sweeps
+- per-pair or per-grid checkpointing
+- safe interrupt handling.
+
+---
+
+### Unit tests (planned)
+
+Categories:
+
+- LT marginal constraints
+- PSD / trace normalization
+- Basis orthogonality (Pauli, Gell-Mann)
+- CPTP constraints on Choi matrices
+- Gibbs-fixing conditions
+- Reproducibility via seeded RNG.
+
+---
+
+## 10) Known limitations
+
+- Exact **local GP feasibility is nonconvex**.
+
+- The current “local solver” is **heuristic** and must be verified.
+
+- **PPT relaxation** is only an **outer relaxation**  
+  (necessary but not sufficient).
+
+- Current \(d=3\) implementation focuses on
+
+  - commuting subclass sampling
+  - Gell-Mann correlation representation
+  - LT-set and GP convertibility SDPs.
+
+A general **dimension-agnostic basis module** could be added later.
+
+---
+
+## 11) Citation / theory references
+
+This codebase supports the capstone narrative on
+
+- geometry of locally thermal sets
+- monotonicity of relative entropy to Gibbs
+- differences between global GP and local GP convertibility
+- structured LT families (TFD-like, dephased/commuting, diagonal slices).
+
+The **capstone report** should contain the literature citations; the README documents **software behavior and implementation details**.
+
+---
+
+### Possible future improvements
+
+- Integrate audit scripts directly into the GUI as a **Diagnostics** experiment group.
+- Add a `tests/` folder with **pytest** so `audit_diagT3D` becomes an automated regression test.

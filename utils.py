@@ -1,15 +1,13 @@
 # utils.py
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sdp_system import LTSDPSystem, dagger
+from ltgp.system import LTGPSystem
+from sdp_system import dagger
 from sdp_analysis import LTAnalyzer
 
-
-# =========================
-# File/plot utilities
-# =========================
 
 def ensure_png_dir():
     folder = "png"
@@ -37,12 +35,8 @@ def log_error(title, text):
     print(f"\n☠️ [ERROR] {title}\n{text}\n")
 
 
-# =========================
-# Config parsing
-# =========================
-
 def parse_variables_string(var_str):
-    """Parse 'k1=v1, k2=v2' into dict with int/float conversion."""
+    """Parse 'k1=v1, k2=v2' into dict with int/float/bool conversion."""
     out = {}
     if not var_str:
         return out
@@ -68,10 +62,6 @@ def parse_variables_string(var_str):
 
     return out
 
-
-# =========================
-# System builder
-# =========================
 
 def default_hamiltonian(d, scale=1.0):
     return np.diag(scale * np.arange(d, dtype=float))
@@ -99,7 +89,7 @@ def build_system_and_analyzer(
         scale_ap = 1.0 if dA != dAp else 1.3
         H_Ap = default_hamiltonian(dAp, scale=scale_ap)
 
-    system = LTSDPSystem(
+    system = LTGPSystem(
         H_A,
         H_Ap,
         beta,
@@ -113,10 +103,6 @@ def build_system_and_analyzer(
     return system, analyzer
 
 
-# =========================
-# State helpers
-# =========================
-
 def random_state(d):
     X = np.random.randn(d, d) + 1j * np.random.randn(d, d)
     rho = X @ dagger(X)
@@ -124,27 +110,22 @@ def random_state(d):
     return 0.5 * (rho + dagger(rho))
 
 
-def paulis():
-    sx = np.array([[0, 1], [1, 0]], dtype=complex)
-    sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
-    sz = np.array([[1, 0], [0, -1]], dtype=complex)
-    return sx, sy, sz
-
-
 def embed_state_3d(system, rho, rng=None):
     dA, dAp = system.dims
     d = dA * dAp
 
     if (dA, dAp) == (2, 2):
-        sx, sy, sz = paulis()
+        B = system.correlation_C(rho)
+        sx = np.array([[0, 1], [1, 0]], dtype=complex)
+        sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
+        sz = np.array([[1, 0], [0, -1]], dtype=complex)
         X = np.kron(sx, sx)
         Y = np.kron(sy, sy)
         Z = np.kron(sz, sz)
-
         return np.array([
-            float(np.real(np.trace(rho @ X))),
-            float(np.real(np.trace(rho @ Y))),
-            float(np.real(np.trace(rho @ Z))),
+            float(np.real(np.trace(B @ X))),
+            float(np.real(np.trace(B @ Y))),
+            float(np.real(np.trace(B @ Z))),
         ])
 
     if rng is None:
