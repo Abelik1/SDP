@@ -3,22 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-
 GROUPS_ORDER = [
-    "A) LT Geometry",
-    "B) State Families",
-    "C) Convertibility",
-    "D) Monotones & Invariants",
-    "E) Utilities & Diagnostics",
+    'A) LT Geometry',
+    'B) State Families',
+    'C) Convertibility',
+    'D) Monotones & Invariants',
+    'E) Utilities & Diagnostics',
 ]
 
 
 @dataclass(frozen=True)
 class ExperimentSpec:
-    """Metadata used by the GUI.
-    - eq_id must match the backend dispatch id
-    - tags are used for search
-    """
     eq_id: str
     title: str
     description: str
@@ -27,152 +22,27 @@ class ExperimentSpec:
 
 
 def get_catalog() -> Dict[str, List[ExperimentSpec]]:
-    items: List[ExperimentSpec] = [
-        # -------- A) LT Geometry --------
-        ExperimentSpec(
-            "lt_region_geometry",
-            "Extremal boundary (support function)",
-            "Sample extremal locally-thermal states via support-function SDPs and plot boundary projections.",
-            "A) LT Geometry",
-            tags=["boundary", "support", "sdp"],
-        ),
-        ExperimentSpec(
-            "lt_interior_geometry",
-            "Interior (random → LT projection)",
-            "Project random states onto LT via trace-norm SDP and visualise interior geometry.",
-            "A) LT Geometry",
-            tags=["interior", "projection", "trace-norm"],
-        ),
-        ExperimentSpec(
-            "lt_geometry_combined",
-            "Boundary + interior (final figure)",
-            "Overlay interior LT points with boundary extremals; optional classical LT line for qubits.",
-            "A) LT Geometry",
-            tags=["figure", "boundary", "interior"],
-        ),
-        ExperimentSpec(
-            "closest_lt_distance",
-            "Distance to LT (trace norm)",
-            "Compute min_{σ∈LT} 1/2 ||ρ-σ||_1 using the standard SDP (P,N ⪰ 0).",
-            "A) LT Geometry",
-            tags=["distance", "projection"],
-        ),
-
-        # -------- B) State Families --------
-        ExperimentSpec(
-            "tfd_vs_dephased",
-            "TFD → dephased TFD",
-            "Compare convertibility and monotones for a TFD-like pure LT state vs its dephased version.",
-            "B) State Families",
-            tags=["tfd", "dephasing"],
-        ),
-        ExperimentSpec(
-            "mix_with_gamma",
-            "Thermalisation path (1−λ)ρ + λγ⊗γ",
-            "Mix a state with global Gibbs and track monotones / distances.",
-            "B) State Families",
-            tags=["mixing", "thermalisation"],
-        ),
-        ExperimentSpec(
-            "lt_family_ray_validation",
-            "LT family: Pauli ray ρ(p)=γ⊗γ+pC0 (qubits)",
-            "Scan an LT ray family and test local-GP feasibility + monotone inequalities (I, ||C||, svals(T)).",
-            "B) State Families",
-            tags=["ray", "pauli", "qubit"],
-        ),
-        ExperimentSpec(
-            "lt_family_diagT_validation",
-            "LT family: diagonal-T ray (qubits)",
-            "Scan a diagonal correlation-tensor ray ρ(p)=γ⊗γ + p*(tx XX+ty YY+tz ZZ)/4.",
-            "B) State Families",
-            tags=["diagT", "ray", "qubit"],
-        ),
-        ExperimentSpec(
-            "lt_C_diagT_plane_characterise",
-            "+C feasible region: 2D diag-T plane (qubits)",
-            "Characterise feasible +C region in a diag-T plane; sample boundary and interior.",
-            "B) State Families",
-            tags=["diagT", "plane", "boundary"],
-        ),
-        ExperimentSpec(
-            "lt_C_diagT_3d_characterise",
-            "+C feasible region: 3D diag-T space (qubits)",
-            "Approximate feasible +C region in full diag-T space and test convertibility on interior points.",
-            "B) State Families",
-            tags=["diagT", "3d"],
-        ),
-        ExperimentSpec(
-            "d3_commuting_sampling",
-            "d=3 commuting LT subclass (transport polytope)",
-            "Sample energy-diagonal LT qutrit states via Sinkhorn scaling (row/col sums = γ) and compute monotones.",
-            "B) State Families",
-            tags=["qutrit", "commuting", "polytope", "sinkhorn"],
-        ),
-
-        # -------- C) Convertibility --------
-        ExperimentSpec(
-            "random_pair_gp_lgp",
-            "Random τ → τ' (GP vs LGP)",
-            "Sample a random pair and test global GP vs local GP (heuristic).",
-            "C) Convertibility",
-            tags=["random", "convertibility"],
-        ),
-        ExperimentSpec(
-            "lt_convertibility_graph",
-            "Convertibility graph (global vs local)",
-            "Generate an LT ensemble and test pairwise convertibility; output adjacency and a directed graph plot.",
-            "C) Convertibility",
-            tags=["graph", "adjacency"],
-        ),
-        ExperimentSpec(
-            "local_gp_ppt_relax",
-            "Local GP outer relaxation: PPT-Choi test",
-            "Convex outer relaxation: allow global channel with Choi PPT across (AoutAin)|(A'outA'in), plus GP + mapping constraints.",
-            "C) Convertibility",
-            tags=["ppt", "relaxation", "choi"],
-        ),
-        ExperimentSpec(
-            "extract_global_channel",
-            "Extract a global GP channel (Choi)",
-            "Solve a global GP Choi SDP to find a concrete channel; verify CPTP + Gibbs-fixing numerically.",
-            "C) Convertibility",
-            tags=["choi", "channel"],
-        ),
-        ExperimentSpec(
-            "extract_local_channels",
-            "Extract local channels (JA,JAp)",
-            "Run the two-step local GP solver and save JA, JAp (plus intermediate ω).",
-            "C) Convertibility",
-            tags=["local", "choi", "channels"],
-        ),
-
-        # -------- D) Monotones & Invariants --------
-        ExperimentSpec(
-            "sanity_checks",
-            "Sanity checks table",
-            "Generate a compact table of LT errors, GP errors, mapping errors, and monotone changes for example mappings.",
-            "D) Monotones & Invariants",
-            tags=["monotones", "table"],
-        ),
-
-        # -------- E) Utilities & Diagnostics --------
-        ExperimentSpec(
-            "local_gp_closure_test",
-            "LT closure under random local GP channels",
-            "Generate LT states, apply random local GP channels, and verify outputs remain LT (numerically).",
-            "E) Utilities & Diagnostics",
-            tags=["closure", "random", "local"],
-        ),
-        ExperimentSpec(
-            "custom",
-            "Custom (backend-defined)",
-            "Pass JSON through to the backend.",
-            "E) Utilities & Diagnostics",
-            tags=["custom"],
-        ),
+    items = [
+        ExperimentSpec('closest_lt_distance', 'Distance to LT (trace norm)', 'Trace-distance projection onto LT or energy-diagonal LT.', 'A) LT Geometry', ['distance', 'projection']),
+        ExperimentSpec('lt_region_geometry', 'Extremal LT boundary', 'Support-function extremals sampling the LT boundary.', 'A) LT Geometry', ['boundary', 'support', 'sdp']),
+        ExperimentSpec('lt_interior_geometry', 'Interior LT cloud', 'Random states projected to LT for interior geometry plots.', 'A) LT Geometry', ['interior', 'projection']),
+        ExperimentSpec('lt_geometry_combined', 'Boundary + interior', 'Overlay boundary and interior LT point clouds.', 'A) LT Geometry', ['figure', 'geometry']),
+        ExperimentSpec('tfd_vs_dephased', 'TFD vs dephased TFD', 'Compare coherent LT and commuting LT exemplars.', 'B) State Families', ['tfd', 'dephasing']),
+        ExperimentSpec('mix_with_gamma', 'Thermalisation path', 'Track monotones along (1-λ)ρ + λγ⊗γ.', 'B) State Families', ['mixing', 'thermalisation']),
+        ExperimentSpec('lt_family_ray_validation', 'Qubit LT Pauli ray', 'Analytic positivity bounds, monotones, and convertibility along ρ(p)=γ⊗γ+pC0.', 'B) State Families', ['ray', 'qubit', 'pauli']),
+        ExperimentSpec('lt_family_diagT_validation', 'Qubit diagonal-T ray', 'Diagonal-T slice with exact boundary interval and convertibility audits.', 'B) State Families', ['diagT', 'qubit']),
+        ExperimentSpec('d3_commuting_sampling', 'Qutrit commuting LT subclass', 'Transport-polytope / Sinkhorn sampling of qutrit commuting LT states.', 'B) State Families', ['qutrit', 'commuting', 'polytope']),
+        ExperimentSpec('random_pair_gp_lgp', 'Random pair GP vs local GP', 'Random source/target pair with global GP, verified local GP, and PPT outer test.', 'C) Convertibility', ['random', 'convertibility']),
+        ExperimentSpec('lt_convertibility_graph', 'Convertibility graph', 'Adjacency comparison of global GP, verified local GP, and PPT-local outer relaxation.', 'C) Convertibility', ['graph', 'adjacency', 'verified']),
+        ExperimentSpec('local_gp_ppt_relax', 'PPT outer relaxation', 'Necessary condition for local GP based on PPT Choi relaxation.', 'C) Convertibility', ['ppt', 'relaxation']),
+        ExperimentSpec('extract_global_channel', 'Extract global GP channel', 'Return an explicit global Gibbs-preserving Choi matrix and diagnostics.', 'C) Convertibility', ['channel', 'choi']),
+        ExperimentSpec('sanity_checks', 'Sanity checks table', 'Compact report of LT errors, GP errors, and monotone ladders.', 'D) Monotones & Invariants', ['table', 'diagnostics']),
+        ExperimentSpec('separable_vs_entangled_lt', 'PPT/separability in LT', 'Classify LT samples by PPT; exact for 2x2 and 2x3, diagnostic otherwise.', 'D) Monotones & Invariants', ['ppt', 'separable']),
+        ExperimentSpec('local_gp_closure_test', 'LT closure under local GP', 'Apply random verified local GP channels and check LT closure numerically.', 'E) Utilities & Diagnostics', ['closure', 'local']),
+        ExperimentSpec('verified_local_edge_audit', 'Verified local edge audit', 'Audit heuristic vs verified local edges on a small ensemble.', 'E) Utilities & Diagnostics', ['audit', 'verified']),
+        ExperimentSpec('custom', 'Custom JSON', 'Pass a backend-defined custom payload.', 'E) Utilities & Diagnostics', ['custom']),
     ]
-
-    grouped: Dict[str, List[ExperimentSpec]] = {g: [] for g in GROUPS_ORDER}
+    grouped = {g: [] for g in GROUPS_ORDER}
     for it in items:
         grouped.setdefault(it.group, []).append(it)
     return grouped
