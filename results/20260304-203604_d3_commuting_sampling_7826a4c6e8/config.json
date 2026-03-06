@@ -1,0 +1,20 @@
+{
+  "custom_function": "",
+  "parsed_variables": {
+    "beta": 1.0,
+    "classical": false,
+    "dA": 3,
+    "dAp": 3,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "num_samples": 50,
+    "reset_system": false,
+    "seed": 0,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "selected_equation_id": "d3_commuting_sampling",
+  "selected_equation_name": "d=3 commuting LT subclass (transport polytope)",
+  "variables_str": "dA=3, dAp=3, beta=1.0, eps_eq_global=1e-06, eps_eq_local=1e-06, eps_gibbs=1e-08, num_samples=50, seed=0, symmetric=true, classical=false, reset_system=false, solver=SCS"
+}

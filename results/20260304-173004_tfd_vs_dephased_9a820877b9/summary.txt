@@ -1,0 +1,4 @@
+Finished: tfd_vs_dephased (TFD → dephased TFD).
+Run dir: results\20260304-173004_tfd_vs_dephased_9a820877b9
+
+Legacy experiment executed. See console logs.

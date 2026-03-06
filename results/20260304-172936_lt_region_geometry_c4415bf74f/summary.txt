@@ -1,0 +1,6 @@
+Finished: lt_region_geometry (Extremal boundary (support function)).
+Run dir: results\20260304-172936_lt_region_geometry_c4415bf74f
+
+Legacy experiment executed. See console logs.
+New PNGs: 1
+png\lt_region_geometry_DI.png

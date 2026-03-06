@@ -1,0 +1,6 @@
+Finished: mix_with_gamma (Thermalisation path (1−λ)ρ + λγ⊗γ).
+Run dir: results\20260304-173015_mix_with_gamma_2619892e06
+
+Legacy experiment executed. See console logs.
+New PNGs: 1
+png\mix_with_gamma.png

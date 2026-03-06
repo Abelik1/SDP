@@ -1,0 +1,8 @@
+Finished: lt_family_ray_validation (LT family: Pauli ray ρ(p)=γ⊗γ+pC0 (qubits)).
+Run dir: results\20260304-173020_lt_family_ray_validation_0c0781def8
+
+Legacy experiment executed. See console logs.
+New PNGs: 3
+png\ray_XX_C_norms_vs_p.png
+png\ray_XX_I_vs_p.png
+png\ray_XX_T_svals_vs_p.png

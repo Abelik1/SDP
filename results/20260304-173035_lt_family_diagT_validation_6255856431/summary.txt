@@ -1,0 +1,8 @@
+Finished: lt_family_diagT_validation (LT family: diagonal-T ray (qubits)).
+Run dir: results\20260304-173035_lt_family_diagT_validation_6255856431
+
+Legacy experiment executed. See console logs.
+New PNGs: 3
+png\diagT_1_0_0_C_norms_vs_p.png
+png\diagT_1_0_0_I_vs_p.png
+png\diagT_1_0_0_T_svals_vs_p.png

@@ -1,0 +1,8 @@
+Finished: lt_convertibility_graph (Convertibility graph (global vs local)).
+Run dir: results\20260306-145344_lt_convertibility_graph_e7e9cdbc9f
+
+Legacy experiment executed. See console logs.
+New PNGs: 3
+png\convertibility_global_heatmap.png
+png\convertibility_local_graph_3d.png
+png\convertibility_local_heatmap.png
