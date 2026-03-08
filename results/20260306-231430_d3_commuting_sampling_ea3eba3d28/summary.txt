@@ -1,0 +1,6 @@
+d=3 commuting LT sampling
+
+n=250, seed=12354, sinkhorn_iters=300
+mean I=0.0635303, std I=0.0595621
+mean D=0.0635303, std D=0.0595621
+mean min PT eig=0.00592668

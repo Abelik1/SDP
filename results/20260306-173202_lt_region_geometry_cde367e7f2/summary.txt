@@ -1,0 +1,4 @@
+LT boundary geometry
+
+samples=50
+classical=False

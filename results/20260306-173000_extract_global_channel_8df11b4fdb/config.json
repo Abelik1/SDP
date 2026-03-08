@@ -1,0 +1,8 @@
+{
+  "parsed_variables": {
+    "dA": "2\ndAp=2\nbeta=1.0\nsolver=SCS\nsymmetric=True\nreset_system=True\nlocal_edge_mode=verified\nn_random_starts=8\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nnum_points=17\nseed=12358\nproject_to_lt=True"
+  },
+  "selected_equation_id": "extract_global_channel",
+  "selected_equation_name": "extract_global_channel",
+  "variables_str": "dA=2\ndAp=2\nbeta=1.0\nsolver=SCS\nsymmetric=True\nreset_system=True\nlocal_edge_mode=verified\nn_random_starts=8\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nnum_points=17\nseed=12358\nproject_to_lt=True"
+}

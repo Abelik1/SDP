@@ -1,0 +1,3 @@
+LT interior geometry
+
+samples=50

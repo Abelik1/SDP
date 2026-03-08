@@ -1,0 +1,5 @@
+Distance to LT
+
+classical=False
+status=optimal
+distance=0.4766623735869714

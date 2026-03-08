@@ -1,0 +1,7 @@
+{
+  "artifacts": {},
+  "eq_id": "local_gp_ppt_relax",
+  "eq_name": "local_gp_ppt_relax",
+  "run_dir": "results\\20260306-233258_local_gp_ppt_relax_f509238631",
+  "summary": "Local GP outer relaxation (PPT on joint Choi)\n\nPPT-relax feasible: False (status=infeasible)\nmap_residual=inf, gibbs_residual=inf\nverified local feasible: False (status=multistart_best_only | optimal (residual=1.498e-01, threshold=1.000e-06))\nInterpretation: infeasible PPT \u21d2 infeasible local GP; feasible PPT is only an outer bound."
+}

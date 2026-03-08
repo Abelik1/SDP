@@ -1,0 +1,9 @@
+{
+  "artifacts": {
+    "report": "random_pair_report.json"
+  },
+  "eq_id": "random_pair_gp_lgp",
+  "eq_name": "random_pair_gp_lgp",
+  "run_dir": "results\\20260306-231431_random_pair_gp_lgp_8e9d812ce5",
+  "summary": "Random pair GP vs local GP\n\nGlobal GP: False | optimal (map_res=5.008e-03, gibbs_res=4.564e-07)\nLocal GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)\nPPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}"
+}

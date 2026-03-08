@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "choi": "global_channel_choi.npy",
+    "report": "global_channel_report.json"
+  },
+  "eq_id": "extract_global_channel",
+  "eq_name": "extract_global_channel",
+  "run_dir": "results\\20260306-233300_extract_global_channel_1102b27691",
+  "summary": "Extract global GP channel\n\nstatus=optimal\nmap_residual=7.788637291402569e-09\ngibbs_residual=7.678739566139822e-09"
+}

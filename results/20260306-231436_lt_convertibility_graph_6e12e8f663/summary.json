@@ -1,0 +1,11 @@
+{
+  "artifacts": {
+    "global_adj": "convertibility_global_adjacency.png",
+    "local_adj": "convertibility_local_adjacency.png",
+    "ppt_adj": "convertibility_ppt_adjacency.png"
+  },
+  "eq_id": "lt_convertibility_graph",
+  "eq_name": "lt_convertibility_graph",
+  "run_dir": "results\\20260306-231436_lt_convertibility_graph_6e12e8f663",
+  "summary": "Convertibility graph\n\nvertices=8\nglobal edges=7\nlocal edges=1\nppt edges=1\nlocal mode=verified"
+}

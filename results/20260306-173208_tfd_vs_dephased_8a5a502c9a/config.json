@@ -1,0 +1,21 @@
+{
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "reset_system": true,
+    "seed": 12350,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "selected_equation_id": "tfd_vs_dephased",
+  "selected_equation_name": "tfd_vs_dephased",
+  "variables_str": "dA=2, dAp=2, beta=1.0, solver=SCS, symmetric=true, reset_system=true, local_edge_mode=verified, n_random_starts=8, eps_eq_global=1e-06, eps_eq_local=1e-06, eps_gibbs=1e-08, num_samples=40, num_points=17, seed=12350"
+}

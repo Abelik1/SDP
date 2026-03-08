@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "figure": "lt_interior_3d.png",
+    "points": "interior_points.npy"
+  },
+  "eq_id": "lt_interior_geometry",
+  "eq_name": "lt_interior_geometry",
+  "run_dir": "results\\20260306-173204_lt_interior_geometry_dfb42acda4",
+  "summary": "LT interior geometry\n\nsamples=50"
+}

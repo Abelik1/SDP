@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "csv": "mix_with_gamma.csv",
+    "figure": "mix_with_gamma.png"
+  },
+  "eq_id": "mix_with_gamma",
+  "eq_name": "mix_with_gamma",
+  "run_dir": "results\\20260306-173226_mix_with_gamma_2d4b9d4e20",
+  "summary": "Thermalisation path\n\nsource=TFD\nsamples=31"
+}

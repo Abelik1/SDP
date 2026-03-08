@@ -1,0 +1,4 @@
+D_tau,D_taup,I_tau,I_taup,LT_tau,LT_taup,global_feasible,label,local_feasible,ppt_outer
+0.0,0.0,-2.220446049250313e-16,-2.220446049250313e-16,True,True,True,gamma,False,True
+1.1644062177764365,0.5822031088882179,1.1644062177764358,0.5822031088882179,True,True,True,TFD->dephased,True,False
+0.42546327421631247,0.07235049951665361,0.1538919997311463,0.07235049951701011,False,True,True,random->LTproj,False,False

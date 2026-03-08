@@ -1,0 +1,9 @@
+{
+  "artifacts": {
+    "figure": "lt_geometry_combined.png"
+  },
+  "eq_id": "lt_geometry_combined",
+  "eq_name": "lt_geometry_combined",
+  "run_dir": "results\\20260306-173205_lt_geometry_combined_0a0169a7d2",
+  "summary": "LT geometry combined\n\nboundary points=50\ninterior points=50"
+}

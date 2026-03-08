@@ -1,0 +1,6 @@
+Local GP outer relaxation (PPT on joint Choi)
+
+PPT-relax feasible: False (status=infeasible)
+map_residual=inf, gibbs_residual=inf
+verified local feasible: False (status=multistart_best_only | optimal (residual=1.498e-01, threshold=1.000e-06))
+Interpretation: infeasible PPT ⇒ infeasible local GP; feasible PPT is only an outer bound.

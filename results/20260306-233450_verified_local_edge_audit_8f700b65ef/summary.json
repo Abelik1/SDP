@@ -1,0 +1,9 @@
+{
+  "artifacts": {
+    "csv": "verified_local_edge_audit.csv"
+  },
+  "eq_id": "verified_local_edge_audit",
+  "eq_name": "verified_local_edge_audit",
+  "run_dir": "results\\20260306-233450_verified_local_edge_audit_8f700b65ef",
+  "summary": "Verified local edge audit\n\npairs=56\nheuristic false positives=0"
+}

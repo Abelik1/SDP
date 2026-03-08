@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "figure": "lt_boundary_3d.png",
+    "points": "boundary_points.npy"
+  },
+  "eq_id": "lt_region_geometry",
+  "eq_name": "lt_region_geometry",
+  "run_dir": "results\\20260306-173202_lt_region_geometry_cde367e7f2",
+  "summary": "LT boundary geometry\n\nsamples=50\nclassical=False"
+}

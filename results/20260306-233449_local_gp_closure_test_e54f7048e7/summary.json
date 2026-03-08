@@ -1,0 +1,9 @@
+{
+  "artifacts": {
+    "csv": "local_gp_closure.csv"
+  },
+  "eq_id": "local_gp_closure_test",
+  "eq_name": "local_gp_closure_test",
+  "run_dir": "results\\20260306-233449_local_gp_closure_test_e54f7048e7",
+  "summary": "LT closure under random local GP channels\n\ntests=30\npass fraction=0.033"
+}
