@@ -1,8 +1,0 @@
-{
-  "parsed_variables": {
-    "dA": "2\ndAp=2\nbeta=1.0\nsolver=SCS\nsymmetric=True\nreset_system=True\nlocal_edge_mode=verified\nn_random_starts=8\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=50\nnum_points=17\nseed=12347\nclassical=False"
-  },
-  "selected_equation_id": "lt_region_geometry",
-  "selected_equation_name": "lt_region_geometry",
-  "variables_str": "dA=2\ndAp=2\nbeta=1.0\nsolver=SCS\nsymmetric=True\nreset_system=True\nlocal_edge_mode=verified\nn_random_starts=8\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=50\nnum_points=17\nseed=12347\nclassical=False"
-}

@@ -1,4 +1,0 @@
-PPT / separability in LT
-
-samples=80
-PPT fraction=0.113

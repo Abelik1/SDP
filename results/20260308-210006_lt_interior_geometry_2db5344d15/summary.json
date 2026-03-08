@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "figure": "lt_interior_3d.png",
+    "points": "interior_points.npy"
+  },
+  "diagnostics": {},
+  "eq_id": "lt_interior_geometry",
+  "eq_name": "lt_interior_geometry",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 200,
+    "reset_system": true,
+    "seed": 12348,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-210006_lt_interior_geometry_2db5344d15",
+  "summary": "LT interior geometry\n\nsamples=200",
+  "summary_text": "Run metadata\n\neq_id=lt_interior_geometry\neq_name=lt_interior_geometry\nrun_dir=results\\20260308-210006_lt_interior_geometry_2db5344d15\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=200\nseed=12348\nlocal_edge_mode=verified\nn_random_starts=8\n\nLT interior geometry\n\nsamples=200\n",
+  "warnings": []
+}

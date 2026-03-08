@@ -1,6 +1,0 @@
-Finished: lt_geometry_combined (Boundary + interior (final figure)).
-Run dir: results\20260304-172950_lt_geometry_combined_f85b629f87
-
-Legacy experiment executed. See console logs.
-New PNGs: 1
-png\lt_geometry_combined.png

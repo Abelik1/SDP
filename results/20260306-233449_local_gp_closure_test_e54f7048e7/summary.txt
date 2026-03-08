@@ -1,4 +1,0 @@
-LT closure under random local GP channels
-
-tests=30
-pass fraction=0.033

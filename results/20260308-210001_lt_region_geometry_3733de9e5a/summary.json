@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "figure": "lt_boundary_3d.png",
+    "points": "boundary_points.npy"
+  },
+  "diagnostics": {},
+  "eq_id": "lt_region_geometry",
+  "eq_name": "lt_region_geometry",
+  "parsed_variables": {
+    "beta": 1.0,
+    "classical": false,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 150,
+    "reset_system": true,
+    "seed": 12347,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-210001_lt_region_geometry_3733de9e5a",
+  "summary": "LT boundary geometry\n\nsamples=150\nclassical=False",
+  "summary_text": "Run metadata\n\neq_id=lt_region_geometry\neq_name=lt_region_geometry\nrun_dir=results\\20260308-210001_lt_region_geometry_3733de9e5a\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=150\nseed=12347\nlocal_edge_mode=verified\nn_random_starts=8\n\nLT boundary geometry\n\nsamples=150\nclassical=False\n",
+  "warnings": []
+}

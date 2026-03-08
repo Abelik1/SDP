@@ -1,7 +1,0 @@
-Convertibility graph
-
-vertices=8
-global edges=7
-local edges=1
-ppt edges=1
-local mode=verified

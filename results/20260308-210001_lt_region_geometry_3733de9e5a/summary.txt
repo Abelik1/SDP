@@ -1,0 +1,21 @@
+Run metadata
+
+eq_id=lt_region_geometry
+eq_name=lt_region_geometry
+run_dir=results\20260308-210001_lt_region_geometry_3733de9e5a
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=150
+seed=12347
+local_edge_mode=verified
+n_random_starts=8
+
+LT boundary geometry
+
+samples=150
+classical=False

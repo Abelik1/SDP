@@ -1,5 +1,0 @@
-Extract global GP channel
-
-status=optimal
-map_residual=7.788637291402569e-09
-gibbs_residual=7.678739566139822e-09

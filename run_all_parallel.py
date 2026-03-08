@@ -1,4 +1,14 @@
 from __future__ import annotations
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+MAX_WORKERS = 3
+
+
 
 import json
 import traceback
@@ -19,37 +29,37 @@ SEED0 = 12345
 
 
 EXPERIMENT_CONFIGS = {
-    # "closest_lt_distance": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 1,
-    #     "classical": False,
-    # },
-    # "lt_region_geometry": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 2,
-    #     "num_samples": 150,
-    #     "classical": False,
-    # },
-    # "lt_interior_geometry": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 3,
-    #     "num_samples": 200,
-    # },
-    # "lt_geometry_combined": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 4,
-    #     "num_samples": 200,
-    #     "classical": False,
-    # },
-    # "tfd_vs_dephased": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 5,
-    # },
-    # "mix_with_gamma": {
-    #     "dA": 2, "dAp": 2,
-    #     "seed": SEED0 + 6,
-    #     "num_samples": 31,
-    # },
+    "closest_lt_distance": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 1,
+        "classical": False,
+    },
+    "lt_region_geometry": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 2,
+        "num_samples": 150,
+        "classical": False,
+    },
+    "lt_interior_geometry": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 3,
+        "num_samples": 200,
+    },
+    "lt_geometry_combined": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 4,
+        "num_samples": 200,
+        "classical": False,
+    },
+    "tfd_vs_dephased": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 5,
+    },
+    "mix_with_gamma": {
+        "dA": 2, "dAp": 2,
+        "seed": SEED0 + 6,
+        "num_samples": 31,
+    },
     "lt_family_ray_validation": {
         "dA": 2, "dAp": 2,
         "seed": SEED0 + 7,
@@ -154,83 +164,111 @@ def build_base_vars(dA: int, dAp: int) -> dict:
     }
 
 
+def run_one_experiment(eq_id: str, cfg: dict) -> dict:
+    dA = int(cfg["dA"])
+    dAp = int(cfg["dAp"])
+
+    base_vars = build_base_vars(dA, dAp)
+    base_vars.update(cfg)
+
+    system, analyzer = build_system_and_analyzer(
+        dA=dA,
+        dAp=dAp,
+        beta=BETA,
+        solver=SOLVER,
+        symmetric=True,
+        eps_eq_global=1e-6,
+        eps_eq_local=1e-6,
+        eps_gibbs=1e-8,
+    )
+
+    config = {
+        "selected_equation_id": eq_id,
+        "selected_equation_name": eq_id,
+        "variables_str": vars_dict_to_string(base_vars),
+    }
+
+    try:
+        result = backend_run(config, system, analyzer)
+        return {
+            "ok": True,
+            "eq_id": eq_id,
+            "dA": dA,
+            "dAp": dAp,
+            "run_dir": result.get("run_dir"),
+            "summary": result.get("summary", ""),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "eq_id": eq_id,
+            "dA": dA,
+            "dAp": dAp,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
 def main() -> None:
     out_root = Path("batch_logs")
     out_root.mkdir(exist_ok=True)
 
     experiment_ids = flatten_catalog_ids()
 
+    jobs = []
     completed = []
     failed = []
-
-    system_cache = {}
 
     print("=" * 80)
     print("Running all registered experiments")
     print(f"Solver: {SOLVER}")
     print(f"Local mode: {LOCAL_EDGE_MODE}")
+    print(f"Workers: {MAX_WORKERS}")
     print("=" * 80)
 
-    for i, eq_id in enumerate(experiment_ids, start=1):
-        if eq_id not in EXPERIMENT_CONFIGS:
-            failed.append({
-                "eq_id": eq_id,
-                "error": "Missing config in EXPERIMENT_CONFIGS"
-            })
-            print(f"[{i}/{len(experiment_ids)}] SKIP {eq_id}: missing config")
-            continue
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        future_map = {}
 
-        cfg = dict(EXPERIMENT_CONFIGS[eq_id])
-        dA = int(cfg["dA"])
-        dAp = int(cfg["dAp"])
+        for eq_id in experiment_ids:
+            if eq_id not in EXPERIMENT_CONFIGS:
+                failed.append({
+                    "eq_id": eq_id,
+                    "error": "Missing config in EXPERIMENT_CONFIGS"
+                })
+                continue
 
-        base_vars = build_base_vars(dA, dAp)
-        base_vars.update(cfg)
+            cfg = dict(EXPERIMENT_CONFIGS[eq_id])
+            fut = ex.submit(run_one_experiment, eq_id, cfg)
+            future_map[fut] = eq_id
 
-        key = (dA, dAp)
-        if key not in system_cache:
-            system_cache[key] = build_system_and_analyzer(
-                dA=dA,
-                dAp=dAp,
-                beta=BETA,
-                solver=SOLVER,
-                symmetric=True,
-                eps_eq_global=1e-6,
-                eps_eq_local=1e-6,
-                eps_gibbs=1e-8,
-            )
-        system, analyzer = system_cache[key]
+        for i, fut in enumerate(as_completed(future_map), start=1):
+            eq_id = future_map[fut]
+            try:
+                out = fut.result()
+            except Exception as e:
+                failed.append({
+                    "eq_id": eq_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                })
+                print(f"[{i}/{len(future_map)}] FAIL  {eq_id}")
+                print(f"    {e}")
+                continue
 
-        config = {
-            "selected_equation_id": eq_id,
-            "selected_equation_name": eq_id,
-            "variables_str": vars_dict_to_string(base_vars),
-        }
-
-        print(f"[{i}/{len(experiment_ids)}] START {eq_id} (dA=dAp={dA})")
-
-        try:
-            result = backend_run(config, system, analyzer)
-            completed.append({
-                "eq_id": eq_id,
-                "dA": dA,
-                "dAp": dAp,
-                "run_dir": result.get("run_dir"),
-                "summary": result.get("summary", ""),
-            })
-            print(f"[{i}/{len(experiment_ids)}] DONE  {eq_id}")
-            print(f"    run_dir: {result.get('run_dir')}")
-        except Exception as e:
-            tb = traceback.format_exc()
-            failed.append({
-                "eq_id": eq_id,
-                "dA": dA,
-                "dAp": dAp,
-                "error": str(e),
-                "traceback": tb,
-            })
-            print(f"[{i}/{len(experiment_ids)}] FAIL  {eq_id}")
-            print(f"    {e}")
+            if out["ok"]:
+                completed.append({
+                    "eq_id": out["eq_id"],
+                    "dA": out["dA"],
+                    "dAp": out["dAp"],
+                    "run_dir": out["run_dir"],
+                    "summary": out["summary"],
+                })
+                print(f"[{i}/{len(future_map)}] DONE  {eq_id}")
+                print(f"    run_dir: {out['run_dir']}")
+            else:
+                failed.append(out)
+                print(f"[{i}/{len(future_map)}] FAIL  {eq_id}")
+                print(f"    {out['error']}")
 
     summary = {
         "solver": SOLVER,
@@ -251,7 +289,6 @@ def main() -> None:
     print(f"Failed:    {len(failed)}")
     print(f"Summary:   {summary_path}")
     print("=" * 80)
-
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "report": "distance_report.json"
+  },
+  "diagnostics": {},
+  "eq_id": "closest_lt_distance",
+  "eq_name": "closest_lt_distance",
+  "parsed_variables": {
+    "beta": 1.0,
+    "classical": false,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "reset_system": true,
+    "seed": 12346,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-210001_closest_lt_distance_9e2784b94f",
+  "summary": "Distance to LT\n\nclassical=False\nstatus=optimal\ndistance=0.4766623735869714",
+  "summary_text": "Run metadata\n\neq_id=closest_lt_distance\neq_name=closest_lt_distance\nrun_dir=results\\20260308-210001_closest_lt_distance_9e2784b94f\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12346\nlocal_edge_mode=verified\nn_random_starts=8\n\nDistance to LT\n\nclassical=False\nstatus=optimal\ndistance=0.4766623735869714\n",
+  "warnings": []
+}

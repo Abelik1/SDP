@@ -1,9 +1,0 @@
-{
-  "artifacts": {
-    "csv": "sanity_checks.csv"
-  },
-  "eq_id": "sanity_checks",
-  "eq_name": "sanity_checks",
-  "run_dir": "results\\20260306-233300_sanity_checks_b4d851a5d0",
-  "summary": "Sanity checks\n\nrows=3\nSaved sanity_checks.csv"
-}

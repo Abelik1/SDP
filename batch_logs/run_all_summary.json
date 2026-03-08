@@ -1,73 +1,9 @@
 {
   "solver": "SCS",
   "local_edge_mode": "verified",
-  "completed_count": 9,
-  "failed_count": 8,
-  "completed": [
-    {
-      "eq_id": "d3_commuting_sampling",
-      "dA": 3,
-      "dAp": 3,
-      "run_dir": "results\\20260306-231430_d3_commuting_sampling_ea3eba3d28",
-      "summary": "d=3 commuting LT sampling\n\nn=250, seed=12354, sinkhorn_iters=300\nmean I=0.0635303, std I=0.0595621\nmean D=0.0635303, std D=0.0595621\nmean min PT eig=0.00592668"
-    },
-    {
-      "eq_id": "random_pair_gp_lgp",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-231431_random_pair_gp_lgp_8e9d812ce5",
-      "summary": "Random pair GP vs local GP\n\nGlobal GP: False | optimal (map_res=5.008e-03, gibbs_res=4.564e-07)\nLocal GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)\nPPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}"
-    },
-    {
-      "eq_id": "lt_convertibility_graph",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-231436_lt_convertibility_graph_6e12e8f663",
-      "summary": "Convertibility graph\n\nvertices=8\nglobal edges=7\nlocal edges=1\nppt edges=1\nlocal mode=verified"
-    },
-    {
-      "eq_id": "local_gp_ppt_relax",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233258_local_gp_ppt_relax_f509238631",
-      "summary": "Local GP outer relaxation (PPT on joint Choi)\n\nPPT-relax feasible: False (status=infeasible)\nmap_residual=inf, gibbs_residual=inf\nverified local feasible: False (status=multistart_best_only | optimal (residual=1.498e-01, threshold=1.000e-06))\nInterpretation: infeasible PPT \u21d2 infeasible local GP; feasible PPT is only an outer bound."
-    },
-    {
-      "eq_id": "extract_global_channel",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233300_extract_global_channel_1102b27691",
-      "summary": "Extract global GP channel\n\nstatus=optimal\nmap_residual=7.788637291402569e-09\ngibbs_residual=7.678739566139822e-09"
-    },
-    {
-      "eq_id": "sanity_checks",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233300_sanity_checks_b4d851a5d0",
-      "summary": "Sanity checks\n\nrows=3\nSaved sanity_checks.csv"
-    },
-    {
-      "eq_id": "separable_vs_entangled_lt",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233447_separable_vs_entangled_lt_cb03f25950",
-      "summary": "PPT / separability in LT\n\nsamples=80\nPPT fraction=0.113"
-    },
-    {
-      "eq_id": "local_gp_closure_test",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233449_local_gp_closure_test_e54f7048e7",
-      "summary": "LT closure under random local GP channels\n\ntests=30\npass fraction=0.033"
-    },
-    {
-      "eq_id": "verified_local_edge_audit",
-      "dA": 2,
-      "dAp": 2,
-      "run_dir": "results\\20260306-233450_verified_local_edge_audit_8f700b65ef",
-      "summary": "Verified local edge audit\n\npairs=56\nheuristic false positives=0"
-    }
-  ],
+  "completed_count": 0,
+  "failed_count": 17,
+  "completed": [],
   "failed": [
     {
       "eq_id": "closest_lt_distance",
@@ -99,6 +35,45 @@
     },
     {
       "eq_id": "lt_family_diagT_validation",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "d3_commuting_sampling",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "random_pair_gp_lgp",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "lt_convertibility_graph",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "local_gp_ppt_relax",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "extract_global_channel",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "sanity_checks",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "separable_vs_entangled_lt",
+      "error": "Missing config in EXPERIMENT_CONFIGS"
+    },
+    {
+      "eq_id": "local_gp_closure_test",
+      "dA": 2,
+      "dAp": 2,
+      "error": "name 'J' is not defined",
+      "traceback": "Traceback (most recent call last):\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\run_all_exp.py\", line 213, in main\n    result = backend_run(config, system, analyzer)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\backend.py\", line 83, in backend_run\n    res = dispatch_experiment(eq_id, vars_dict, system, analyzer, run_dir)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\experiments_ext.py\", line 691, in dispatch_experiment\n    return table[eq_id](vars_dict, system, analyzer, run_dir)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\experiments_ext.py\", line 570, in exp_local_gp_closure_test\n    out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)\nNameError: name 'J' is not defined\n"
+    },
+    {
+      "eq_id": "verified_local_edge_audit",
       "error": "Missing config in EXPERIMENT_CONFIGS"
     }
   ]

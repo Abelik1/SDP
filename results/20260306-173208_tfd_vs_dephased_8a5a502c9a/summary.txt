@@ -1,6 +1,0 @@
-TFD vs dephased TFD
-
-I(TFD)=1.16441, I(deph)=0.582203
-D(TFD)=1.16441, D(deph)=0.582203
-Global GP: True | optimal (map_res=4.668e-11, gibbs_res=2.188e-10)
-Local GP (verified): True | multistart_ok (hint#1) | optimal (residual=6.422e-10, threshold=1.000e-06)

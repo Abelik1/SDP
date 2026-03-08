@@ -1,4 +1,0 @@
-Finished: lt_family_ray_validation (LT family: Pauli ray ρ(p)=γ⊗γ+pC0 (qubits)).
-Run dir: results\20260304-203611_lt_family_ray_validation_de022bfaaa
-
-Legacy experiment executed. See console logs.

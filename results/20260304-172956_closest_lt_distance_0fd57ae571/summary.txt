@@ -1,4 +1,0 @@
-Finished: closest_lt_distance (Distance to LT (trace norm)).
-Run dir: results\20260304-172956_closest_lt_distance_0fd57ae571
-
-Legacy experiment executed. See console logs.

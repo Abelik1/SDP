@@ -276,22 +276,138 @@ class LTSDPSystem:
             out += Kext @ rho_h @ Kext.conj().T
         return 0.5 * (out + out.conj().T)
 
+    # def apply_local_choi_A_no_norm(self, rho: np.ndarray, J_A: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
+    #     dA, _ = self.dims
+    #     kraus = self.kraus_from_choi(J_A, d_in=dA, d_out=dA, tol=tol_kraus)
+    #     return self._apply_kraus_on_A(rho, kraus)
+
+    # def apply_local_choi_Ap_no_norm(self, rho: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
+    #     _, dAp = self.dims
+    #     kraus = self.kraus_from_choi(J_Ap, d_in=dAp, d_out=dAp, tol=tol_kraus)
+    #     return self._apply_kraus_on_Ap(rho, kraus)
+
+    # def apply_local_product_choi_no_norm(
+    #     self, rho: np.ndarray, J_A: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12
+    # ) -> np.ndarray:
+    #     # maps commute; order doesn't matter
+    #     out = self.apply_local_choi_A_no_norm(rho, J_A, tol_kraus=tol_kraus)
+    #     out = self.apply_local_choi_Ap_no_norm(out, J_Ap, tol_kraus=tol_kraus)
+    #     return out
     def apply_local_choi_A_no_norm(self, rho: np.ndarray, J_A: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
-        dA, _ = self.dims
-        kraus = self.kraus_from_choi(J_A, d_in=dA, d_out=dA, tol=tol_kraus)
-        return self._apply_kraus_on_A(rho, kraus)
+        return self.apply_local_choi_A_via_blocks(rho, J_A)
 
     def apply_local_choi_Ap_no_norm(self, rho: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12) -> np.ndarray:
-        _, dAp = self.dims
-        kraus = self.kraus_from_choi(J_Ap, d_in=dAp, d_out=dAp, tol=tol_kraus)
-        return self._apply_kraus_on_Ap(rho, kraus)
+        return self.apply_local_choi_Ap_via_blocks(rho, J_Ap)
 
     def apply_local_product_choi_no_norm(
         self, rho: np.ndarray, J_A: np.ndarray, J_Ap: np.ndarray, tol_kraus: float = 1e-12
     ) -> np.ndarray:
-        # maps commute; order doesn't matter
-        out = self.apply_local_choi_A_no_norm(rho, J_A, tol_kraus=tol_kraus)
-        out = self.apply_local_choi_Ap_no_norm(out, J_Ap, tol_kraus=tol_kraus)
+        out = self.apply_local_choi_A_via_blocks(rho, J_A)
+        out = self.apply_local_choi_Ap_via_blocks(out, J_Ap)
+        return 0.5 * (out + out.conj().T)
+
+    def apply_local_choi_A_via_blocks(self, rho: np.ndarray, J_A: np.ndarray) -> np.ndarray:
+        """Apply local channel on A using the direct block/Choi formula."""
+        dA, dAp = self.dims
+        rho_h = 0.5 * (rho + rho.conj().T)
+        blocks = rho_h.reshape(dA, dAp, dA, dAp)
+        out = np.zeros((dA * dAp, dA * dAp), dtype=complex)
+        for i in range(dA):
+            for j in range(dA):
+                Eij = np.zeros((dA, dA), dtype=complex)
+                Eij[i, j] = 1.0
+                Phi_Eij = self.choi_apply_numpy(J_A, Eij, d_in=dA, d_out=dA)
+                Tij = blocks[i, :, j, :]
+                out += np.kron(Phi_Eij, Tij)
+        return 0.5 * (out + out.conj().T)
+
+    def apply_local_choi_Ap_via_blocks(self, rho: np.ndarray, J_Ap: np.ndarray) -> np.ndarray:
+        """Apply local channel on A' using the direct block/Choi formula."""
+        dA, dAp = self.dims
+        rho_h = 0.5 * (rho + rho.conj().T)
+        blocks = rho_h.reshape(dA, dAp, dA, dAp)
+        out = np.zeros((dA * dAp, dA * dAp), dtype=complex)
+        for a in range(dAp):
+            for b in range(dAp):
+                Eab = np.zeros((dAp, dAp), dtype=complex)
+                Eab[a, b] = 1.0
+                Phi_Eab = self.choi_apply_numpy(J_Ap, Eab, d_in=dAp, d_out=dAp)
+                Xab = blocks[:, a, :, b]
+                out += np.kron(Xab, Phi_Eab)
+        return 0.5 * (out + out.conj().T)
+
+    def apply_local_product_choi_via_blocks(self, rho: np.ndarray, J_A: np.ndarray, J_Ap: np.ndarray) -> np.ndarray:
+        out = self.apply_local_choi_A_via_blocks(rho, J_A)
+        out = self.apply_local_choi_Ap_via_blocks(out, J_Ap)
+        return 0.5 * (out + out.conj().T)
+
+    def _matrix_debug_report(self, X: np.ndarray, tol: float = 1e-12) -> dict:
+        Xh = 0.5 * (X + X.conj().T)
+        ev = np.linalg.eigvalsh(Xh)
+        return {
+            "trace": float(np.real(np.trace(Xh))),
+            "trace_err": float(abs(np.trace(Xh) - 1.0)),
+            "hermiticity_fro": float(norm(X - X.conj().T, "fro")),
+            "min_eig": float(np.min(np.real(ev))),
+            "max_eig": float(np.max(np.real(ev))),
+            "fro_norm": float(norm(Xh, "fro")),
+        }
+
+    def state_debug_report(self, rho: np.ndarray, lt_tol: float = 1e-8, tol: float = 1e-12) -> dict:
+        rho_h = 0.5 * (rho + rho.conj().T)
+        lt_ok, okA, okAp, rhoA, rhoAp = self.lt_membership(rho_h, tol=lt_tol)
+        D_rho, I_rho, C_A, C_Ap = self.monotones(rho_h, tol=tol)
+        corr = self.correlation_metrics(rho_h, tol=tol)
+        ppt = self.ppt_status(rho_h, tol=max(tol, 1e-10))
+        rep = self._matrix_debug_report(rho_h, tol=tol)
+        rep.update({
+            "LT": bool(lt_ok),
+            "LT_A": bool(okA),
+            "LT_Ap": bool(okAp),
+            "marginal_err_A": float(norm(rhoA - self.gammaA, "fro")),
+            "marginal_err_Ap": float(norm(rhoAp - self.gammaAp, "fro")),
+            "D": float(D_rho),
+            "I": float(I_rho),
+            "D_minus_I": float(D_rho - I_rho),
+            "C_A": float(C_A),
+            "C_Ap": float(C_Ap),
+            "C_trace_dist": float(corr["C_trace_dist"]),
+            "C_fro": float(corr["C_fro"]),
+            "C_marginalA_fro": float(corr["C_marginalA_fro"]),
+            "C_marginalAp_fro": float(corr["C_marginalAp_fro"]),
+            "ppt": bool(ppt["is_ppt"]),
+            "ppt_min_eig": float(ppt["min_pt_eig"]),
+        })
+        return rep
+
+    def local_channel_application_debug(self, rho: np.ndarray, J_A: np.ndarray | None = None, J_Ap: np.ndarray | None = None) -> dict:
+        out: dict[str, float | dict | None] = {}
+        rho_h = 0.5 * (rho + rho.conj().T)
+        if J_A is not None:
+            JAh = 0.5 * (J_A + J_A.conj().T)
+            via_kraus = self.apply_local_choi_A_no_norm(rho_h, JAh)
+            via_blocks = self.apply_local_choi_A_via_blocks(rho_h, JAh)
+            out["A_method_gap"] = float(norm(via_kraus - via_blocks, "fro"))
+            out["A_out_report"] = self.state_debug_report(via_kraus)
+            out["A_diag"] = self.choi_diagnostics(JAh, d_in=self.dA, d_out=self.dA, gamma_in=self.gammaA, gamma_out=self.gammaA)
+            gamma_k = self.apply_local_choi_A_no_norm(np.kron(self.gammaA, self.gammaAp), JAh)
+            out["A_gamma_marginal_err"] = float(norm(partial_trace(gamma_k, self.dims, keep=[0]) - self.gammaA, "fro"))
+        if J_Ap is not None:
+            JAp_h = 0.5 * (J_Ap + J_Ap.conj().T)
+            via_kraus = self.apply_local_choi_Ap_no_norm(rho_h, JAp_h)
+            via_blocks = self.apply_local_choi_Ap_via_blocks(rho_h, JAp_h)
+            out["Ap_method_gap"] = float(norm(via_kraus - via_blocks, "fro"))
+            out["Ap_out_report"] = self.state_debug_report(via_kraus)
+            out["Ap_diag"] = self.choi_diagnostics(JAp_h, d_in=self.dAp, d_out=self.dAp, gamma_in=self.gammaAp, gamma_out=self.gammaAp)
+            gamma_k = self.apply_local_choi_Ap_no_norm(np.kron(self.gammaA, self.gammaAp), JAp_h)
+            out["Ap_gamma_marginal_err"] = float(norm(partial_trace(gamma_k, self.dims, keep=[1]) - self.gammaAp, "fro"))
+        if J_A is not None and J_Ap is not None:
+            JAh = 0.5 * (J_A + J_A.conj().T)
+            JAp_h = 0.5 * (J_Ap + J_Ap.conj().T)
+            via_kraus = self.apply_local_product_choi_no_norm(rho_h, JAh, JAp_h)
+            via_blocks = self.apply_local_product_choi_via_blocks(rho_h, JAh, JAp_h)
+            out["product_method_gap"] = float(norm(via_kraus - via_blocks, "fro"))
+            out["product_out_report"] = self.state_debug_report(via_kraus)
         return out
 
     def verify_local_gp_details(
@@ -438,7 +554,13 @@ class LTSDPSystem:
                         return True, f"multistart_ok (hint#{idx}) | {status}", {"best": best, "hint_index": idx}
                     return True, f"multistart_ok (hint#{idx}) | {status}"
 
-        # If nothing verified, still return best attempt (useful as a 'gap' score)
+        # If nothing verified, still return best attempt (useful as a gap score).
+        if best.get("details") is not None and best.get("verify") is None:
+            try:
+                if best["details"].get("J_A") is not None and best["details"].get("J_Ap") is not None:
+                    best["verify"] = self.verify_local_gp_details(tau_h, tau_p_h, best["details"], eps_map=eps_map_val, eps_gibbs=eps_g_val)
+            except Exception as exc:
+                best["verify"] = {"ok": False, "reason": f"verify_error: {exc}"}
         if return_details:
             return (best["feasible"] and (not verify)), f"multistart_best_only | {best['status']}", {"best": best}
         return (best["feasible"] and (not verify)), f"multistart_best_only | {best['status']}"
@@ -610,54 +732,48 @@ class LTSDPSystem:
     @staticmethod
     def _choi_apply_cvx(J_var, X_const, d_in: int, d_out: int):
         """
-        Apply Choi matrix J_var to a constant operator X_const.
+        Apply interleaved-order Choi matrix J_var to X_const.
 
-        For Choi J of shape (d_out*d_in, d_out*d_in), the action is:
-          Φ(X) = Tr_in[J (I_out ⊗ X^T)]
-        Implemented via stride-block extraction (works for small dims).
+        J indices are ordered as (mu, i), i.e. flattened index = mu * d_in + i.
+        Then block J[i::d_in, j::d_in] is Φ(|i><j|), so
+            Φ(X) = sum_{i,j} X[i,j] * J[i::d_in, j::d_in].
         """
-        XT = X_const.T
-        blocks = []
-        for i in range(d_in):
-            acc = 0
-            for j in range(d_in):
-                block = J_var[i::d_in, j::d_in]  # each block is d_out x d_out
-                acc += XT[i, j] * block
-            blocks.append(acc)
         Y = 0
-        for b in blocks:
-            Y += b
+        for i in range(d_in):
+            for j in range(d_in):
+                block = J_var[i::d_in, j::d_in]   # d_out x d_out
+                Y += X_const[i, j] * block
         return Y
 
     @staticmethod
     def choi_apply_numpy(J: np.ndarray, X: np.ndarray, d_in: int, d_out: int):
         """
-        Numpy version of Choi application (same as _choi_apply_cvx).
+        Numpy version of the same interleaved-order Choi application.
         """
-        XT = X.T
         Y = np.zeros((d_out, d_out), dtype=complex)
         for i in range(d_in):
-            acc = np.zeros((d_out, d_out), dtype=complex)
             for j in range(d_in):
                 block = J[i::d_in, j::d_in]
-                acc += XT[i, j] * block
-            Y += acc
+                Y += X[i, j] * block
         return Y
 
     @staticmethod
     def kraus_from_choi(J: np.ndarray, d_in: int, d_out: int, tol: float = 1e-12):
         """
-        Extract Kraus operators {K_k} from a Choi matrix J via eigendecomposition:
-          J = Σ_k λ_k |v_k⟩⟨v_k|,  K_k = sqrt(λ_k) reshape(v_k, (d_out,d_in), order='F')
+        Extract Kraus operators from an interleaved-order Choi matrix J.
+
+        J uses flattened index (mu, i) -> mu * d_in + i.
+        Therefore eigenvectors unvectorize to K with reshape(..., order='C').
         """
         Jh = 0.5 * (J + J.conj().T)
         w, V = eigh(Jh)
+
         kraus = []
         for lam, v in zip(w, V.T):
             lam = float(np.real(lam))
             if lam <= tol:
                 continue
-            K = np.sqrt(lam) * v.reshape((d_out, d_in), order="F")
+            K = np.sqrt(lam) * v.reshape((d_out, d_in), order="C")
             kraus.append(K)
         return kraus
 
@@ -949,6 +1065,7 @@ class LTSDPSystem:
     # Local GP (two-step heuristic + residual)
     # ==========================================
 
+
     def check_local_gp_feasible(
         self,
         tau,
@@ -965,10 +1082,13 @@ class LTSDPSystem:
         """
         Two-step local GP test:
 
-          Step 1: Find a GP channel on A giving intermediate omega = (G_A ⊗ id)(tau).
-          Step 2: Find a GP channel on A' that best maps omega -> tau_p.
+        Step 1: Find a GP channel on A giving intermediate omega = (G_A ⊗ id)(tau).
+        Step 2: Find a GP channel on A' that best maps omega -> tau_p.
 
         The returned residual from Step 2 is a useful quantitative "gap" score.
+        When return_details=True, this method also returns channel diagnostics,
+        omega diagnostics, and explicit re-application checks to help debug false
+        positives / negatives.
         """
         dA, dAp = self.dims
 
@@ -976,8 +1096,20 @@ class LTSDPSystem:
         tau_p_clean = 0.5 * (tau_p + tau_p.conj().T)
 
         if norm(tau_clean - tau_p_clean, "fro") <= 1e-12:
+            ident_details = {
+                "residual": 0.0,
+                "threshold": 0.0,
+                "J_A": None,
+                "J_Ap": None,
+                "omega": tau_clean,
+                "status_step1": "identity_case",
+                "status_step2": "identity_case",
+                "tau_report": self.state_debug_report(tau_clean),
+                "tau_p_report": self.state_debug_report(tau_p_clean),
+                "omega_report": self.state_debug_report(tau_clean),
+            }
             if return_details:
-                return True, "identity_case", {"residual": 0.0, "J_A": None, "J_Ap": None, "omega": tau_clean}
+                return True, "identity_case", ident_details
             return True, "identity_case"
 
         solver_actual = self._select_solver(solver, verbose)
@@ -1046,15 +1178,17 @@ class LTSDPSystem:
         except Exception as e:
             if verbose:
                 print(f"LGP step-1 solver error: {e}")
+            err_details = {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None, "status_step1": f"error: {e}", "status_step2": "not_run"}
             if return_details:
-                return False, f"LGP step-1 error: {str(e)}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None}
+                return False, f"LGP step-1 error: {str(e)}", err_details
             return False, f"LGP step-1 error: {str(e)}"
 
         if prob1.status not in ["optimal", "optimal_inaccurate"]:
             if verbose:
                 print(f"LGP step-1 status: {prob1.status}")
+            fail_details = {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None, "status_step1": prob1.status, "status_step2": "not_run"}
             if return_details:
-                return False, f"LGP step-1 {prob1.status}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": None}
+                return False, f"LGP step-1 {prob1.status}", fail_details
             return False, f"LGP step-1 {prob1.status}"
 
         omega_val = 0.5 * (omega.value + omega.value.conj().T)
@@ -1099,15 +1233,17 @@ class LTSDPSystem:
         except Exception as e:
             if verbose:
                 print(f"LGP step-2 solver error: {e}")
+            err_details = {"residual": np.inf, "J_A": None if JA.value is None else 0.5 * (JA.value + JA.value.conj().T), "J_Ap": None, "omega": omega_val, "status_step1": prob1.status, "status_step2": f"error: {e}"}
             if return_details:
-                return False, f"LGP step-2 error: {str(e)}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": omega_val}
+                return False, f"LGP step-2 error: {str(e)}", err_details
             return False, f"LGP step-2 error: {str(e)}"
 
         if prob2.status not in ["optimal", "optimal_inaccurate"]:
             if verbose:
                 print(f"LGP step-2 status: {prob2.status}")
+            fail_details = {"residual": np.inf, "J_A": None if JA.value is None else 0.5 * (JA.value + JA.value.conj().T), "J_Ap": None, "omega": omega_val, "status_step1": prob1.status, "status_step2": prob2.status}
             if return_details:
-                return False, f"LGP step-2 {prob2.status}", {"residual": np.inf, "J_A": None, "J_Ap": None, "omega": omega_val}
+                return False, f"LGP step-2 {prob2.status}", fail_details
             return False, f"LGP step-2 {prob2.status}"
 
         res = float(prob2.value) if prob2.value is not None else np.inf
@@ -1122,7 +1258,22 @@ class LTSDPSystem:
             "omega": omega_val,
             "status_step1": prob1.status,
             "status_step2": prob2.status,
+            "step1_obj": float(prob1.value) if prob1.value is not None else np.inf,
+            "step2_obj": res,
+            "tau_report": self.state_debug_report(tau_clean),
+            "tau_p_report": self.state_debug_report(tau_p_clean),
+            "omega_report": self.state_debug_report(omega_val),
         }
+
+        if details["J_A"] is not None:
+            details["J_A_diag"] = self.choi_diagnostics(details["J_A"], d_in=dA, d_out=dA, gamma_in=self.gammaA, gamma_out=self.gammaA)
+            details["A_application_debug"] = self.local_channel_application_debug(tau_clean, J_A=details["J_A"])
+        if details["J_Ap"] is not None:
+            details["J_Ap_diag"] = self.choi_diagnostics(details["J_Ap"], d_in=dAp, d_out=dAp, gamma_in=self.gammaAp, gamma_out=self.gammaAp)
+            details["Ap_application_debug"] = self.local_channel_application_debug(omega_val, J_Ap=details["J_Ap"])
+        if details["J_A"] is not None and details["J_Ap"] is not None:
+            details["verification"] = self.verify_local_gp_details(tau_clean, tau_p_clean, details, eps_map=eps_map_val, eps_gibbs=eps_g_val)
+            details["product_application_debug"] = self.local_channel_application_debug(tau_clean, J_A=details["J_A"], J_Ap=details["J_Ap"])
 
         if return_details:
             return feasible, status, details

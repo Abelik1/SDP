@@ -9,7 +9,16 @@ import numpy as np
 
 from .run_store import save_csv_rows, save_fig, save_npy, write_json
 from .system import LTAnalyzer, LTGPSystem, embed_state_3d, random_state
+import math
 
+def _f(x):
+    if x is None:
+        return None
+    try:
+        x = float(x)
+    except Exception:
+        return None
+    return x if math.isfinite(x) else None
 
 def _bool(v: Any) -> bool:
     if isinstance(v, bool):
@@ -17,7 +26,16 @@ def _bool(v: Any) -> bool:
     if isinstance(v, str):
         return v.strip().lower() in {'1', 'true', 'yes', 'y'}
     return bool(v)
-
+def count_true(values):
+    total = 0
+    for v in values:
+        if v is None:
+            continue
+        try:
+            total += 1 if bool(v) else 0
+        except Exception:
+            pass
+    return total
 
 def _local_mode(vars_dict: Dict[str, Any]) -> str:
     return str(vars_dict.get('local_edge_mode', 'verified')).strip().lower()
@@ -25,6 +43,7 @@ def _local_mode(vars_dict: Dict[str, Any]) -> str:
 
 def _summary_lines(title: str, lines: List[str]) -> str:
     return title + "\n\n" + "\n".join(lines)
+
 
 
 def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarray, vars_dict: Dict[str, Any], run_dir: str, prefix: str) -> Dict[str, Any]:
@@ -43,18 +62,19 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
                 continue
             tau = states[i]
             tau_p = states[j]
-            g_ok, g_status = system.check_global_gp_feasible(
+            g_ok, g_status, g_det = system.check_global_gp_feasible(
                 tau, tau_p,
                 solver=system.solver_default,
                 tol=system.tol_default,
                 eps_map=system.eps_eq_global,
                 eps_gibbs=system.eps_gibbs,
                 verbose=False,
+                return_details=True,
             )
             A_g[i, j] = int(bool(g_ok))
 
             if local_mode == 'verified':
-                l_ok, l_status, _ = system.check_local_gp_verified(
+                l_ok, l_status, l_det = system.check_local_gp_verified(
                     tau, tau_p,
                     solver=system.solver_default,
                     tol=system.tol_default,
@@ -66,7 +86,7 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
                     return_details=True,
                 )
             elif local_mode in ('multistart', 'multi'):
-                l_ok, l_status, _ = system.check_local_gp_feasible_multistart(
+                l_ok, l_status, l_det = system.check_local_gp_feasible_multistart(
                     tau, tau_p,
                     solver=system.solver_default,
                     tol=system.tol_default,
@@ -79,7 +99,7 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
                     return_details=True,
                 )
             else:
-                l_ok, l_status, _ = system.check_local_gp_feasible(
+                l_ok, l_status, l_det = system.check_local_gp_feasible(
                     tau, tau_p,
                     solver=system.solver_default,
                     tol=system.tol_default,
@@ -104,7 +124,19 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
             D_j, I_j, _, _ = system.monotones(tau_p)
             cm_i = system.correlation_metrics(tau)
             cm_j = system.correlation_metrics(tau_p)
-            rows.append({
+
+            # local details may come back nested under 'best' for multistart
+            l_best = (l_det or {}).get('best', l_det or {}) if isinstance(l_det, dict) else {}
+            l_best_det = l_best.get('details', l_best) if isinstance(l_best, dict) else {}
+            l_verify = None
+            if isinstance(l_det, dict):
+                l_verify = l_det.get('verification', None)
+                if l_verify is None and isinstance(l_best, dict):
+                    l_verify = l_best.get('verify', None)
+            l_verify = l_verify or {}
+            l_core = l_best_det if isinstance(l_best_det, dict) else {}
+
+            row = {
                 'source': i,
                 'target': j,
                 'p_source': float(p_list[i]),
@@ -121,12 +153,33 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
                 'local_status': str(l_status),
                 'global_status': str(g_status),
                 'ppt_status': str(ppt.status),
-            })
+                'global_map_residual': _f((g_det or {}).get('map_residual')),
+                'global_gibbs_residual': _f((g_det or {}).get('gibbs_residual')),
+                'local_residual': _f(l_core.get('residual')),
+                'local_threshold': _f(l_core.get('threshold')),
+                'local_hint_index': int((l_det or {}).get('hint_index', -1)) if isinstance(l_det, dict) else -1,
+                'local_verify_ok': int(bool(l_verify.get('ok', False))) if isinstance(l_verify, dict) else 0,
+                'local_verify_map_err': _f(l_verify.get('map_err') if isinstance(l_verify, dict) else None),
+                'local_verify_tp_err_A': _f(l_verify.get('tp_err_A') if isinstance(l_verify, dict) else None),
+                'local_verify_tp_err_Ap': _f(l_verify.get('tp_err_Ap') if isinstance(l_verify, dict) else None),
+                'local_verify_gp_err_A': _f(l_verify.get('gp_err_A') if isinstance(l_verify, dict) else None),
+                'local_verify_gp_err_Ap': _f(l_verify.get('gp_err_Ap') if isinstance(l_verify, dict) else None),
+                'local_verify_method_gap': _f(((l_core.get('product_application_debug') or {}) if isinstance(l_core, dict) else {}).get('product_method_gap')),
+                'ppt_map_residual': _f(getattr(ppt, 'map_residual', None)),
+                'ppt_gibbs_residual': _f(getattr(ppt, 'gibbs_residual', None)),
+            }
+            row['global_monotone_violation'] = int(bool(row['global_edge']) and (row['D_target'] > row['D_source'] + 1e-8 or row['I_target'] > row['I_source'] + 1e-8))
+            row['local_without_ppt'] = int(bool(row['local_edge']) and not bool(row['ppt_edge']))
+            row['local_unverified'] = int(bool(row['local_edge']) and not bool(row['local_verify_ok']))
+            rows.append(row)
 
     save_npy(run_dir, A_g, f'{prefix}_A_global.npy')
     save_npy(run_dir, A_l, f'{prefix}_A_local.npy')
     save_npy(run_dir, A_p, f'{prefix}_A_ppt.npy')
     save_csv_rows(run_dir, rows, f'{prefix}_edges.csv')
+    save_csv_rows(run_dir, [r for r in rows if r['global_monotone_violation']], f'{prefix}_global_monotone_violations.csv')
+    save_csv_rows(run_dir, [r for r in rows if r['local_without_ppt']], f'{prefix}_local_without_ppt.csv')
+    save_csv_rows(run_dir, [r for r in rows if r['local_unverified']], f'{prefix}_local_unverified.csv')
 
     for tag, A in [('global', A_g), ('local', A_l), ('ppt', A_p)]:
         fig = plt.figure()
@@ -138,7 +191,16 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
         save_fig(run_dir, fig, f'{prefix}_{tag}_adjacency.png')
         plt.close(fig)
 
-    return {'A_global': A_g, 'A_local': A_l, 'A_ppt': A_p, 'rows': rows}
+    diagnostics = {
+        'global_edges': int(A_g.sum()),
+        'local_edges': int(A_l.sum()),
+        'ppt_edges': int(A_p.sum()),
+        'global_monotone_violations': _count_true(rows, 'global_monotone_violation'),
+        'local_without_ppt': _count_true(rows, 'local_without_ppt'),
+        'local_unverified': _count_true(rows, 'local_unverified'),
+    }
+    write_json(run_dir, diagnostics, filename=f'{prefix}_diagnostics.json')
+    return {'A_global': A_g, 'A_local': A_l, 'A_ppt': A_p, 'rows': rows, 'diagnostics': diagnostics}
 
 
 def exp_closest_lt_distance(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:
@@ -316,6 +378,9 @@ def _exp_family_common(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: 
             f"global edges={int(graph['A_global'].sum())}",
             f"local edges={int(graph['A_local'].sum())}",
             f"ppt edges={int(graph['A_ppt'].sum())}",
+            f"global monotone violations={int(graph['diagnostics']['global_monotone_violations'])}",
+            f"local edges without PPT={int(graph['diagnostics']['local_without_ppt'])}",
+            f"local edges failing explicit verification={int(graph['diagnostics']['local_unverified'])}",
             f'monotone violations among global edges={len(monotone_violations)}',
         ]),
         'artifacts': {'csv': f'{prefix}_family.csv', 'figure': f'{prefix}_monotones.png'},
@@ -429,7 +494,7 @@ def exp_lt_convertibility_graph(vars_dict: Dict[str, Any], system: LTGPSystem, a
         p_list = np.arange(len(states), dtype=float)
     graph = _family_graph(system, states, p_list, vars_dict, run_dir, prefix='convertibility')
     save_csv_rows(run_dir, [{'idx': i, 'label': labels[i]} for i in range(len(labels))], 'vertices.csv')
-    return {'summary': _summary_lines('Convertibility graph', [f'vertices={len(states)}', f"global edges={int(graph['A_global'].sum())}", f"local edges={int(graph['A_local'].sum())}", f"ppt edges={int(graph['A_ppt'].sum())}", f'local mode={_local_mode(vars_dict)}']), 'artifacts': {'global_adj': 'convertibility_global_adjacency.png', 'local_adj': 'convertibility_local_adjacency.png', 'ppt_adj': 'convertibility_ppt_adjacency.png'}}
+    return {'summary': _summary_lines('Convertibility graph', [f'vertices={len(states)}', f"global edges={int(graph['A_global'].sum())}", f"local edges={int(graph['A_local'].sum())}", f"ppt edges={int(graph['A_ppt'].sum())}", f"local edges without PPT={int(graph['diagnostics']['local_without_ppt'])}", f"local edges failing explicit verification={int(graph['diagnostics']['local_unverified'])}", f'local mode={_local_mode(vars_dict)}']), 'artifacts': {'global_adj': 'convertibility_global_adjacency.png', 'local_adj': 'convertibility_local_adjacency.png', 'ppt_adj': 'convertibility_ppt_adjacency.png', 'edge_csv': 'convertibility_edges.csv', 'diagnostics': 'convertibility_diagnostics.json'}}
 
 
 def exp_sanity_checks(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:
@@ -476,24 +541,91 @@ def exp_separable_vs_entangled_lt(vars_dict: Dict[str, Any], system: LTGPSystem,
     return {'summary': _summary_lines('PPT / separability in LT', [f'samples={n}', f'PPT fraction={ppt_fraction:.3f}']), 'artifacts': {'csv': 'lt_ppt_classification.csv', 'figure': 'lt_ppt_classification.png'}}
 
 
+
 def exp_local_gp_closure_test(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:
     n = int(vars_dict.get('num_samples', 20))
     seed = int(vars_dict.get('seed', 0))
     rng = np.random.default_rng(seed)
     rows = []
+    weird = []
     for k in range(n):
         rho = random_state(system.dA * system.dAp, seed=int(rng.integers(0, 10**9)))
         sigma = system.closest_lt_state(rho, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False)[0]
-        J_A, _stA, _diagA = system.find_random_local_gp_channel(which='A', solver=system.solver_default, tol=system.tol_default, eps_gibbs=system.eps_gibbs, seed=int(rng.integers(0, 10**9)))
-        J_B, _stB, _diagB = system.find_random_local_gp_channel(which='Ap', solver=system.solver_default, tol=system.tol_default, eps_gibbs=system.eps_gibbs, seed=int(rng.integers(0, 10**9)))
+        J_A, stA, diagA = system.find_random_local_gp_channel(which='A', solver=system.solver_default, tol=system.tol_default, eps_gibbs=system.eps_gibbs, seed=int(rng.integers(0, 10**9)))
+        J_B, stB, diagB = system.find_random_local_gp_channel(which='Ap', solver=system.solver_default, tol=system.tol_default, eps_gibbs=system.eps_gibbs, seed=int(rng.integers(0, 10**9)))
+        
+        # Debug: check if the random local channels actually preserve the marginals as they should
+        # Phi_gamma_A = system.choi_apply_numpy(J_A, system.gammaA, d_in=system.dA, d_out=system.dA)
+        # errA = np.linalg.norm(Phi_gamma_A - system.gammaA, 'fro')
+        # Phi_gamma_B = system.choi_apply_numpy(J_B, system.gammaAp, d_in=system.dAp, d_out=system.dAp)
+        # errB = np.linalg.norm(Phi_gamma_B - system.gammaAp, 'fro')
+        # print("Err A and B for random local channels:")
+        # print(errA)
+        # print(errB)
+        # Ks = system.kraus_from_choi(J_A, d_in=system.dA, d_out=system.dA)
+        # gammaA_k = sum(K @ system.gammaA @ K.conj().T for K in Ks)
+        # errA_k = np.linalg.norm(gammaA_k - system.gammaA, 'fro')
+        # print("Gamma and Err A from Kraus reconstruction:")
+        # print(gammaA_k,"\n", errA_k)
+        # out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)
+        # out2 = sum(K @ gamma @ K.conj().T for K in system.kraus_from_choi(J, 2, 2))
+        out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)
+        Ks = system.kraus_from_choi(J, 2, 2)
+        out2 = sum(K @ gamma @ K.conj().T for K in Ks)
+        gap = np.linalg.norm(out1 - out2, 'fro')
+        assert gap < 1e-8
+        # print(np.linalg.norm(out1 - out2, 'fro'))
+        
         if J_A is None or J_B is None:
+            rows.append({'idx': k, 'constructed': 0, 'status_A': str(stA), 'status_B': str(stB)})
+            weird.append({'idx': k, 'reason': 'missing_random_channel', 'status_A': str(stA), 'status_B': str(stB)})
             continue
         out = system.apply_local_product_channel(sigma, J_A, J_B)
         lt_ok, _, _, margA, margB = system.lt_membership(out, tol=1e-6)
-        rows.append({'idx': k, 'lt_ok': int(bool(lt_ok)), 'errA': float(np.linalg.norm(margA - system.gammaA, 'fro')), 'errB': float(np.linalg.norm(margB - system.gammaAp, 'fro')), 'trace_err': float(abs(np.trace(out) - 1.0))})
+        debug = system.local_channel_application_debug(sigma, J_A=J_A, J_Ap=J_B)
+        out_report = debug.get('product_out_report', {})
+        row = {
+            'idx': k,
+            'constructed': 1,
+            'lt_ok': int(bool(lt_ok)),
+            'status_A': str(stA),
+            'status_B': str(stB),
+            'errA': float(np.linalg.norm(margA - system.gammaA, 'fro')),
+            'errB': float(np.linalg.norm(margB - system.gammaAp, 'fro')),
+            'trace_err': float(abs(np.trace(out) - 1.0)),
+            'min_eig_out': _f(out_report.get('min_eig')),
+            'D_minus_I_out': _f(out_report.get('D_minus_I')),
+            'A_method_gap': _f(debug.get('A_method_gap')),
+            'Ap_method_gap': _f(debug.get('Ap_method_gap')),
+            'product_method_gap': _f(debug.get('product_method_gap')),
+            'A_tp_err': _f((debug.get('A_diag') or {}).get('tp_fro_err')),
+            'Ap_tp_err': _f((debug.get('Ap_diag') or {}).get('tp_fro_err')),
+            'A_gp_err': _f((debug.get('A_diag') or {}).get('gp_fro_err')),
+            'Ap_gp_err': _f((debug.get('Ap_diag') or {}).get('gp_fro_err')),
+            'A_min_eig_J': _f((debug.get('A_diag') or {}).get('min_eig_J')),
+            'Ap_min_eig_J': _f((debug.get('Ap_diag') or {}).get('min_eig_J')),
+        }
+        rows.append(row)
+        if (not lt_ok) or row['product_method_gap'] > 1e-7 or row['A_method_gap'] > 1e-7 or row['Ap_method_gap'] > 1e-7:
+            weird.append(dict(row))
     save_csv_rows(run_dir, rows, 'local_gp_closure.csv')
-    pass_fraction = float(np.mean([r['lt_ok'] for r in rows])) if rows else 0.0
-    return {'summary': _summary_lines('LT closure under random local GP channels', [f'tests={len(rows)}', f'pass fraction={pass_fraction:.3f}']), 'artifacts': {'csv': 'local_gp_closure.csv'}}
+    save_csv_rows(run_dir, weird, 'local_gp_closure_weird.csv')
+    diagnostics = {
+        'tests_requested': n,
+        'tests_completed': len(rows),
+        'constructed_channels': int(sum(1 for r in rows if int(r.get('constructed', 1)) == 1)),
+        'pass_count': int(sum(1 for r in rows if int(r.get('lt_ok', 0)) == 1)),
+        'pass_fraction': float(np.mean([r.get('lt_ok', 0) for r in rows if int(r.get('constructed', 1)) == 1])) if any(int(r.get('constructed', 1)) == 1 for r in rows) else 0.0,
+        'max_A_method_gap': max([abs(r.get('A_method_gap', 0.0)) for r in rows if 'A_method_gap' in r] or [0.0]),
+        'max_Ap_method_gap': max([abs(r.get('Ap_method_gap', 0.0)) for r in rows if 'Ap_method_gap' in r] or [0.0]),
+        'max_product_method_gap': max([abs(r.get('product_method_gap', 0.0)) for r in rows if 'product_method_gap' in r] or [0.0]),
+        'max_marginal_err_A': max([abs(r.get('errA', 0.0)) for r in rows if 'errA' in r] or [0.0]),
+        'max_marginal_err_Ap': max([abs(r.get('errB', 0.0)) for r in rows if 'errB' in r] or [0.0]),
+        'weird_count': len(weird),
+    }
+    write_json(run_dir, diagnostics, filename='local_gp_closure_diagnostics.json')
+    return {'summary': _summary_lines('LT closure under random local GP channels', [f'tests={len(rows)}', f"constructed channels={diagnostics['constructed_channels']}", f"pass fraction={diagnostics['pass_fraction']:.3f}", f"max product-method gap={diagnostics['max_product_method_gap']:.3e}", f"max marginal error A={diagnostics['max_marginal_err_A']:.3e}", f"max marginal error A'={diagnostics['max_marginal_err_Ap']:.3e}", f"weird rows saved={len(weird)}"]), 'artifacts': {'csv': 'local_gp_closure.csv', 'weird_csv': 'local_gp_closure_weird.csv', 'diagnostics': 'local_gp_closure_diagnostics.json'}, 'diagnostics': diagnostics}
+
 
 
 def exp_verified_local_edge_audit(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:
@@ -510,11 +642,28 @@ def exp_verified_local_edge_audit(vars_dict: Dict[str, Any], system: LTGPSystem,
             if i == j:
                 continue
             h_ok, h_status, h_det = system.check_local_gp_feasible(states[i], states[j], solver=system.solver_default, tol=system.tol_default, eps_map=system.eps_eq_local, eps_gibbs=system.eps_gibbs, verbose=False, return_details=True)
-            v_ok, v_status, _ = system.check_local_gp_verified(states[i], states[j], solver=system.solver_default, tol=system.tol_default, eps_map=system.eps_eq_local, eps_gibbs=system.eps_gibbs, n_random_starts=int(vars_dict.get('n_random_starts', 6)), seed=seed + i * n + j, verbose=False, return_details=True)
-            rows.append({'source': i, 'target': j, 'heuristic_ok': int(bool(h_ok)), 'verified_ok': int(bool(v_ok)), 'heuristic_status': str(h_status), 'verified_status': str(v_status), 'heuristic_residual': float((h_det or {}).get('residual', np.nan))})
+            v_ok, v_status, v_det = system.check_local_gp_verified(states[i], states[j], solver=system.solver_default, tol=system.tol_default, eps_map=system.eps_eq_local, eps_gibbs=system.eps_gibbs, n_random_starts=int(vars_dict.get('n_random_starts', 6)), seed=seed + i * n + j, verbose=False, return_details=True)
+            v_best = (v_det or {}).get('best', v_det or {}) if isinstance(v_det, dict) else {}
+            v_verify = (v_best.get('verify') if isinstance(v_best, dict) else None) or (v_det.get('verification') if isinstance(v_det, dict) else None) or {}
+            rows.append({
+                'source': i,
+                'target': j,
+                'heuristic_ok': int(bool(h_ok)),
+                'verified_ok': int(bool(v_ok)),
+                'heuristic_status': str(h_status),
+                'verified_status': str(v_status),
+                'heuristic_residual': _f((h_det or {}).get('residual')),
+                'verified_best_residual': _f(((v_best.get('details') or {}) if isinstance(v_best, dict) else {}).get('residual')),
+                'verified_check_ok': int(bool(v_verify.get('ok', False))) if isinstance(v_verify, dict) else 0,
+                'verified_map_err': _f(v_verify.get('map_err') if isinstance(v_verify, dict) else None),
+                'verified_tp_err_A': _f(v_verify.get('tp_err_A') if isinstance(v_verify, dict) else None),
+                'verified_tp_err_Ap': _f(v_verify.get('tp_err_Ap') if isinstance(v_verify, dict) else None),
+            })
     save_csv_rows(run_dir, rows, 'verified_local_edge_audit.csv')
+    suspicious = [r for r in rows if r['verified_ok'] and not r['verified_check_ok']]
+    save_csv_rows(run_dir, suspicious, 'verified_local_edge_audit_suspicious.csv')
     fp = sum(1 for r in rows if r['heuristic_ok'] and not r['verified_ok'])
-    return {'summary': _summary_lines('Verified local edge audit', [f'pairs={len(rows)}', f'heuristic false positives={fp}']), 'artifacts': {'csv': 'verified_local_edge_audit.csv'}}
+    return {'summary': _summary_lines('Verified local edge audit', [f'pairs={len(rows)}', f'heuristic false positives={fp}', f'verified edges failing explicit check={len(suspicious)}']), 'artifacts': {'csv': 'verified_local_edge_audit.csv', 'suspicious_csv': 'verified_local_edge_audit_suspicious.csv'}}
 
 
 def dispatch_experiment(eq_id: str, vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:

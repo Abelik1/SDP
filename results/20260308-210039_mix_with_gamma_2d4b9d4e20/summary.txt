@@ -1,0 +1,21 @@
+Run metadata
+
+eq_id=mix_with_gamma
+eq_name=mix_with_gamma
+run_dir=results\20260308-210039_mix_with_gamma_2d4b9d4e20
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=31
+seed=12351
+local_edge_mode=verified
+n_random_starts=8
+
+Thermalisation path
+
+source=TFD
+samples=31

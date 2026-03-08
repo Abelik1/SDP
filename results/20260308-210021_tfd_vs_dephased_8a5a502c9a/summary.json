@@ -1,0 +1,28 @@
+{
+  "artifacts": {
+    "report": "tfd_vs_dephased.json"
+  },
+  "diagnostics": {},
+  "eq_id": "tfd_vs_dephased",
+  "eq_name": "tfd_vs_dephased",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "reset_system": true,
+    "seed": 12350,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-210021_tfd_vs_dephased_8a5a502c9a",
+  "summary": "TFD vs dephased TFD\n\nI(TFD)=1.16441, I(deph)=0.582203\nD(TFD)=1.16441, D(deph)=0.582203\nGlobal GP: True | optimal (map_res=4.668e-11, gibbs_res=2.188e-10)\nLocal GP (verified): True | multistart_ok (hint#1) | optimal (residual=6.422e-10, threshold=1.000e-06)",
+  "summary_text": "Run metadata\n\neq_id=tfd_vs_dephased\neq_name=tfd_vs_dephased\nrun_dir=results\\20260308-210021_tfd_vs_dephased_8a5a502c9a\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12350\nlocal_edge_mode=verified\nn_random_starts=8\n\nTFD vs dephased TFD\n\nI(TFD)=1.16441, I(deph)=0.582203\nD(TFD)=1.16441, D(deph)=0.582203\nGlobal GP: True | optimal (map_res=4.668e-11, gibbs_res=2.188e-10)\nLocal GP (verified): True | multistart_ok (hint#1) | optimal (residual=6.422e-10, threshold=1.000e-06)\n",
+  "warnings": []
+}

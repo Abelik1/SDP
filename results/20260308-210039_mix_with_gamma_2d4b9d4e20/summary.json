@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "csv": "mix_with_gamma.csv",
+    "figure": "mix_with_gamma.png"
+  },
+  "diagnostics": {},
+  "eq_id": "mix_with_gamma",
+  "eq_name": "mix_with_gamma",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 31,
+    "reset_system": true,
+    "seed": 12351,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-210039_mix_with_gamma_2d4b9d4e20",
+  "summary": "Thermalisation path\n\nsource=TFD\nsamples=31",
+  "summary_text": "Run metadata\n\neq_id=mix_with_gamma\neq_name=mix_with_gamma\nrun_dir=results\\20260308-210039_mix_with_gamma_2d4b9d4e20\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=31\nseed=12351\nlocal_edge_mode=verified\nn_random_starts=8\n\nThermalisation path\n\nsource=TFD\nsamples=31\n",
+  "warnings": []
+}

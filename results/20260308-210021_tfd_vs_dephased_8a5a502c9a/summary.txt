@@ -1,0 +1,23 @@
+Run metadata
+
+eq_id=tfd_vs_dephased
+eq_name=tfd_vs_dephased
+run_dir=results\20260308-210021_tfd_vs_dephased_8a5a502c9a
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12350
+local_edge_mode=verified
+n_random_starts=8
+
+TFD vs dephased TFD
+
+I(TFD)=1.16441, I(deph)=0.582203
+D(TFD)=1.16441, D(deph)=0.582203
+Global GP: True | optimal (map_res=4.668e-11, gibbs_res=2.188e-10)
+Local GP (verified): True | multistart_ok (hint#1) | optimal (residual=6.422e-10, threshold=1.000e-06)

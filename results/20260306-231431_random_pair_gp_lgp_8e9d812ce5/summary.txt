@@ -1,5 +1,0 @@
-Random pair GP vs local GP
-
-Global GP: False | optimal (map_res=5.008e-03, gibbs_res=4.564e-07)
-Local GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)
-PPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}

@@ -1,9 +1,0 @@
-{
-  "artifacts": {
-    "report": "distance_report.json"
-  },
-  "eq_id": "closest_lt_distance",
-  "eq_name": "closest_lt_distance",
-  "run_dir": "results\\20260306-173202_closest_lt_distance_9e2784b94f",
-  "summary": "Distance to LT\n\nclassical=False\nstatus=optimal\ndistance=0.4766623735869714"
-}

@@ -1,8 +1,0 @@
-Finished: lt_C_diagT_plane_characterise (+C feasible region: 2D diag-T plane (qubits)).
-Run dir: results\20260304-173041_lt_C_diagT_plane_characterise_d09a28bae2
-
-Legacy experiment executed. See console logs.
-New PNGs: 3
-png\lt_C_plane_xz_boundary.png
-png\lt_C_plane_xz_global_heatmap.png
-png\lt_C_plane_xz_local_heatmap.png

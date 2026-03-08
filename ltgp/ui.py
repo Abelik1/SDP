@@ -131,8 +131,10 @@ class LTGPMainWindow(QWidget):
 
         self.num_samples = QSpinBox(); self.num_samples.setRange(1, 5000); self.num_samples.setValue(50)
         self.seed = QSpinBox(); self.seed.setRange(-1, 10_000_000); self.seed.setValue(0)
+        self.n_random_starts = QSpinBox(); self.n_random_starts.setRange(0, 128); self.n_random_starts.setValue(6)
         form.addRow('num_samples:', self.num_samples)
         form.addRow('seed:', self.seed)
+        form.addRow('n_random_starts:', self.n_random_starts)
 
         self.symmetric = QCheckBox("Use symmetric H (H_A = H_A') when possible")
         self.symmetric.setChecked(True)
@@ -280,6 +282,7 @@ class LTGPMainWindow(QWidget):
             _kv('reset_system', bool(self.reset_system.isChecked())),
             _kv('solver', str(self.solver.currentText())),
             _kv('local_edge_mode', str(self.local_mode.currentText())),
+            _kv('n_random_starts', int(self.n_random_starts.value())),
         ]
         extra = self.extra_vars.text().strip()
         if extra:

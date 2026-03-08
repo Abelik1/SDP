@@ -1,4 +1,0 @@
-LT geometry combined
-
-boundary points=50
-interior points=50

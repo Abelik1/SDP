@@ -1,4 +1,0 @@
-Verified local edge audit
-
-pairs=56
-heuristic false positives=0

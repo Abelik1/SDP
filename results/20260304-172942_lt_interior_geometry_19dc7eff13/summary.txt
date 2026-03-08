@@ -1,6 +1,0 @@
-Finished: lt_interior_geometry (Interior (random → LT projection)).
-Run dir: results\20260304-172942_lt_interior_geometry_19dc7eff13
-
-Legacy experiment executed. See console logs.
-New PNGs: 1
-png\lt_interior_geometry_3d.png

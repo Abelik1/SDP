@@ -1,0 +1,22 @@
+Run metadata
+
+eq_id=closest_lt_distance
+eq_name=closest_lt_distance
+run_dir=results\20260308-210001_closest_lt_distance_9e2784b94f
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12346
+local_edge_mode=verified
+n_random_starts=8
+
+Distance to LT
+
+classical=False
+status=optimal
+distance=0.4766623735869714

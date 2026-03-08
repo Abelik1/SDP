@@ -1,4 +1,0 @@
-Sanity checks
-
-rows=3
-Saved sanity_checks.csv

@@ -1,0 +1,20 @@
+Run metadata
+
+eq_id=lt_interior_geometry
+eq_name=lt_interior_geometry
+run_dir=results\20260308-210006_lt_interior_geometry_2db5344d15
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=200
+seed=12348
+local_edge_mode=verified
+n_random_starts=8
+
+LT interior geometry
+
+samples=200
