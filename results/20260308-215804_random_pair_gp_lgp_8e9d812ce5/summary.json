@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "report": "random_pair_report.json"
+  },
+  "diagnostics": {},
+  "eq_id": "random_pair_gp_lgp",
+  "eq_name": "random_pair_gp_lgp",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "project_to_lt": true,
+    "reset_system": true,
+    "seed": 12355,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-215804_random_pair_gp_lgp_8e9d812ce5",
+  "summary": "Random pair GP vs local GP\n\nGlobal GP: False | optimal (map_res=5.008e-03, gibbs_res=2.027e-07)\nLocal GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)\nPPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}",
+  "summary_text": "Run metadata\n\neq_id=random_pair_gp_lgp\neq_name=random_pair_gp_lgp\nrun_dir=results\\20260308-215804_random_pair_gp_lgp_8e9d812ce5\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12355\nlocal_edge_mode=verified\nn_random_starts=8\n\nRandom pair GP vs local GP\n\nGlobal GP: False | optimal (map_res=5.008e-03, gibbs_res=2.027e-07)\nLocal GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)\nPPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}\n",
+  "warnings": []
+}

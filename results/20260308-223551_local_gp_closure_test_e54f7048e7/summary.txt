@@ -1,0 +1,40 @@
+Run metadata
+
+eq_id=local_gp_closure_test
+eq_name=local_gp_closure_test
+run_dir=results\20260308-223551_local_gp_closure_test_e54f7048e7
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=30
+seed=12361
+local_edge_mode=verified
+n_random_starts=8
+
+LT closure under random local GP channels
+
+tests=30
+constructed channels=30
+pass fraction=1.000
+max product-method gap=0.000e+00
+max marginal error A=1.802e-07
+max marginal error A'=2.120e-07
+weird rows saved=0
+
+Diagnostics
+
+tests_requested=30
+tests_completed=30
+constructed_channels=30
+pass_count=30
+pass_fraction=1.0
+max_A_method_gap=0.0
+max_Ap_method_gap=0.0
+max_product_method_gap=0.0
+max_marginal_err_A=1.8023893869488983e-07
+max_marginal_err_Ap=2.1197928758861021e-07
+weird_count=0

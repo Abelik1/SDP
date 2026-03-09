@@ -1,0 +1,22 @@
+Run metadata
+
+eq_id=verified_local_edge_audit
+eq_name=verified_local_edge_audit
+run_dir=results\20260308-221616_verified_local_edge_audit_8f700b65ef
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=8
+seed=12362
+local_edge_mode=verified
+n_random_starts=8
+
+Verified local edge audit
+
+pairs=56
+heuristic false positives=0
+verified edges failing explicit check=0

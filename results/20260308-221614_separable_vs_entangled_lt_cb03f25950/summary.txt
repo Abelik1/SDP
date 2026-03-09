@@ -1,0 +1,21 @@
+Run metadata
+
+eq_id=separable_vs_entangled_lt
+eq_name=separable_vs_entangled_lt
+run_dir=results\20260308-221614_separable_vs_entangled_lt_cb03f25950
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=80
+seed=12360
+local_edge_mode=verified
+n_random_starts=8
+
+PPT / separability in LT
+
+samples=80
+PPT fraction=0.113

@@ -1,0 +1,42 @@
+{
+  "artifacts": {
+    "csv": "local_gp_closure.csv",
+    "diagnostics": "local_gp_closure_diagnostics.json",
+    "weird_csv": "local_gp_closure_weird.csv"
+  },
+  "diagnostics": {
+    "constructed_channels": 30,
+    "max_A_method_gap": 0.0,
+    "max_Ap_method_gap": 0.0,
+    "max_marginal_err_A": 1.8023893869488983e-07,
+    "max_marginal_err_Ap": 2.1197928758861021e-07,
+    "max_product_method_gap": 0.0,
+    "pass_count": 30,
+    "pass_fraction": 1.0,
+    "tests_completed": 30,
+    "tests_requested": 30,
+    "weird_count": 0
+  },
+  "eq_id": "local_gp_closure_test",
+  "eq_name": "local_gp_closure_test",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 30,
+    "reset_system": true,
+    "seed": 12361,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-223551_local_gp_closure_test_e54f7048e7",
+  "summary": "LT closure under random local GP channels\n\ntests=30\nconstructed channels=30\npass fraction=1.000\nmax product-method gap=0.000e+00\nmax marginal error A=1.802e-07\nmax marginal error A'=2.120e-07\nweird rows saved=0",
+  "summary_text": "Run metadata\n\neq_id=local_gp_closure_test\neq_name=local_gp_closure_test\nrun_dir=results\\20260308-223551_local_gp_closure_test_e54f7048e7\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=30\nseed=12361\nlocal_edge_mode=verified\nn_random_starts=8\n\nLT closure under random local GP channels\n\ntests=30\nconstructed channels=30\npass fraction=1.000\nmax product-method gap=0.000e+00\nmax marginal error A=1.802e-07\nmax marginal error A'=2.120e-07\nweird rows saved=0\n\nDiagnostics\n\ntests_requested=30\ntests_completed=30\nconstructed_channels=30\npass_count=30\npass_fraction=1.0\nmax_A_method_gap=0.0\nmax_Ap_method_gap=0.0\nmax_product_method_gap=0.0\nmax_marginal_err_A=1.8023893869488983e-07\nmax_marginal_err_Ap=2.1197928758861021e-07\nweird_count=0\n",
+  "warnings": []
+}

@@ -1,0 +1,27 @@
+{
+  "artifacts": {},
+  "diagnostics": {},
+  "eq_id": "local_gp_ppt_relax",
+  "eq_name": "local_gp_ppt_relax",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "project_to_lt": true,
+    "reset_system": true,
+    "seed": 12357,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-221435_local_gp_ppt_relax_f509238631",
+  "summary": "Local GP outer relaxation (PPT on joint Choi)\n\nPPT-relax feasible: False (status=infeasible)\nmap_residual=inf, gibbs_residual=inf\nverified local feasible: False (status=multistart_best_only | optimal (residual=1.680e-01, threshold=1.000e-06))\nInterpretation: infeasible PPT \u21d2 infeasible local GP; feasible PPT is only an outer bound.",
+  "summary_text": "Run metadata\n\neq_id=local_gp_ppt_relax\neq_name=local_gp_ppt_relax\nrun_dir=results\\20260308-221435_local_gp_ppt_relax_f509238631\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12357\nlocal_edge_mode=verified\nn_random_starts=8\n\nLocal GP outer relaxation (PPT on joint Choi)\n\nPPT-relax feasible: False (status=infeasible)\nmap_residual=inf, gibbs_residual=inf\nverified local feasible: False (status=multistart_best_only | optimal (residual=1.680e-01, threshold=1.000e-06))\nInterpretation: infeasible PPT \u21d2 infeasible local GP; feasible PPT is only an outer bound.\n",
+  "warnings": []
+}

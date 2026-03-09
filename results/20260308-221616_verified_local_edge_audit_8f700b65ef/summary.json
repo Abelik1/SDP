@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "csv": "verified_local_edge_audit.csv",
+    "suspicious_csv": "verified_local_edge_audit_suspicious.csv"
+  },
+  "diagnostics": {},
+  "eq_id": "verified_local_edge_audit",
+  "eq_name": "verified_local_edge_audit",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 8,
+    "reset_system": true,
+    "seed": 12362,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-221616_verified_local_edge_audit_8f700b65ef",
+  "summary": "Verified local edge audit\n\npairs=56\nheuristic false positives=0\nverified edges failing explicit check=0",
+  "summary_text": "Run metadata\n\neq_id=verified_local_edge_audit\neq_name=verified_local_edge_audit\nrun_dir=results\\20260308-221616_verified_local_edge_audit_8f700b65ef\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=8\nseed=12362\nlocal_edge_mode=verified\nn_random_starts=8\n\nVerified local edge audit\n\npairs=56\nheuristic false positives=0\nverified edges failing explicit check=0\n",
+  "warnings": []
+}

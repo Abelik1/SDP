@@ -1,0 +1,13 @@
+{
+  "constructed_channels": 30,
+  "max_A_method_gap": 0.0,
+  "max_Ap_method_gap": 0.0,
+  "max_marginal_err_A": 1.8023893869488983e-07,
+  "max_marginal_err_Ap": 2.1197928758861021e-07,
+  "max_product_method_gap": 0.0,
+  "pass_count": 30,
+  "pass_fraction": 1.0,
+  "tests_completed": 30,
+  "tests_requested": 30,
+  "weird_count": 0
+}

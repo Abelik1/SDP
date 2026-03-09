@@ -1,0 +1,22 @@
+Run metadata
+
+eq_id=random_pair_gp_lgp
+eq_name=random_pair_gp_lgp
+run_dir=results\20260308-215804_random_pair_gp_lgp_8e9d812ce5
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12355
+local_edge_mode=verified
+n_random_starts=8
+
+Random pair GP vs local GP
+
+Global GP: False | optimal (map_res=5.008e-03, gibbs_res=2.027e-07)
+Local GP (verified): False | multistart_best_only | optimal (residual=1.518e-01, threshold=1.000e-06)
+PPT outer: {'feasible': False, 'status': 'infeasible', 'map_residual': inf, 'gibbs_residual': inf}

@@ -50,7 +50,7 @@ EXPERIMENT_CONFIGS = {
     #     "seed": SEED0 + 6,
     #     "num_samples": 31,
     # },
-    "lt_family_ray_validation": {
+    "lt_family_ray_validation": { #long
         "dA": 2, "dAp": 2,
         "seed": SEED0 + 7,
         "num_points": 21,
@@ -66,53 +66,53 @@ EXPERIMENT_CONFIGS = {
         "ty": 0.0,
         "tz": 0.0,
     },
-    "d3_commuting_sampling": {
-        "dA": 3, "dAp": 3,
-        "seed": SEED0 + 9,
-        "num_samples": 250,
-        "sinkhorn_iters": 300,
-    },
-    "random_pair_gp_lgp": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 10,
-        "project_to_lt": True,
-    },
-    "lt_convertibility_graph": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 11,
-        "num_samples": 8,
-        "ensemble": "mixed",
-        "include_negative": True,
-    },
-    "local_gp_ppt_relax": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 12,
-        "project_to_lt": True,
-    },
-    "extract_global_channel": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 13,
-        "project_to_lt": True,
-    },
-    "sanity_checks": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 14,
-    },
-    "separable_vs_entangled_lt": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 15,
-        "num_samples": 80,
-    },
+    # "d3_commuting_sampling": {
+    #     "dA": 3, "dAp": 3,
+    #     "seed": SEED0 + 9,
+    #     "num_samples": 250,
+    #     "sinkhorn_iters": 300,
+    # },
+    # "random_pair_gp_lgp": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 10,
+    #     "project_to_lt": True,
+    # },
+    # "lt_convertibility_graph": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 11,
+    #     "num_samples": 8,
+    #     "ensemble": "mixed",
+    #     "include_negative": True,
+    # },
+    # "local_gp_ppt_relax": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 12,
+    #     "project_to_lt": True,
+    # },
+    # "extract_global_channel": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 13,
+    #     "project_to_lt": True,
+    # },
+    # "sanity_checks": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 14,
+    # },
+    # "separable_vs_entangled_lt": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 15,
+    #     "num_samples": 80,
+    # },
     "local_gp_closure_test": {
         "dA": 2, "dAp": 2,
         "seed": SEED0 + 16,
-        "num_samples": 30,
+        "num_samples": 200,
     },
-    "verified_local_edge_audit": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 17,
-        "num_samples": 8,
-    },
+    # "verified_local_edge_audit": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 17,
+    #     "num_samples": 8,
+    # },
 }
 
 

@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "choi": "global_channel_choi.npy",
+    "report": "global_channel_report.json"
+  },
+  "diagnostics": {},
+  "eq_id": "extract_global_channel",
+  "eq_name": "extract_global_channel",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 40,
+    "project_to_lt": true,
+    "reset_system": true,
+    "seed": 12358,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260308-221437_extract_global_channel_1102b27691",
+  "summary": "Extract global GP channel\n\nstatus=optimal\nmap_residual=8.245092476067736e-09\ngibbs_residual=8.158599549054353e-09",
+  "summary_text": "Run metadata\n\neq_id=extract_global_channel\neq_name=extract_global_channel\nrun_dir=results\\20260308-221437_extract_global_channel_1102b27691\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12358\nlocal_edge_mode=verified\nn_random_starts=8\n\nExtract global GP channel\n\nstatus=optimal\nmap_residual=8.245092476067736e-09\ngibbs_residual=8.158599549054353e-09\n",
+  "warnings": []
+}

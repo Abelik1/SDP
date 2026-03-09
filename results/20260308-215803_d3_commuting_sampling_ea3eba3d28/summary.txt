@@ -1,0 +1,23 @@
+Run metadata
+
+eq_id=d3_commuting_sampling
+eq_name=d3_commuting_sampling
+run_dir=results\20260308-215803_d3_commuting_sampling_ea3eba3d28
+dA=3
+dAp=3
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=250
+seed=12354
+local_edge_mode=verified
+n_random_starts=8
+
+d=3 commuting LT sampling
+
+n=250, seed=12354, sinkhorn_iters=300
+mean I=0.0635303, std I=0.0595621
+mean D=0.0635303, std D=0.0595621
+mean min PT eig=0.00592668

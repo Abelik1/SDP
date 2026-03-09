@@ -1,0 +1,21 @@
+Run metadata
+
+eq_id=sanity_checks
+eq_name=sanity_checks
+run_dir=results\20260308-221437_sanity_checks_b4d851a5d0
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12359
+local_edge_mode=verified
+n_random_starts=8
+
+Sanity checks
+
+rows=3
+Saved sanity_checks.csv

@@ -1,0 +1,22 @@
+Run metadata
+
+eq_id=extract_global_channel
+eq_name=extract_global_channel
+run_dir=results\20260308-221437_extract_global_channel_1102b27691
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12358
+local_edge_mode=verified
+n_random_starts=8
+
+Extract global GP channel
+
+status=optimal
+map_residual=8.245092476067736e-09
+gibbs_residual=8.158599549054353e-09

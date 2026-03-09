@@ -1,9 +1,17 @@
 {
   "solver": "SCS",
   "local_edge_mode": "verified",
-  "completed_count": 0,
-  "failed_count": 17,
-  "completed": [],
+  "completed_count": 1,
+  "failed_count": 16,
+  "completed": [
+    {
+      "eq_id": "local_gp_closure_test",
+      "dA": 2,
+      "dAp": 2,
+      "run_dir": "results\\20260308-223551_local_gp_closure_test_e54f7048e7",
+      "summary": "LT closure under random local GP channels\n\ntests=30\nconstructed channels=30\npass fraction=1.000\nmax product-method gap=0.000e+00\nmax marginal error A=1.802e-07\nmax marginal error A'=2.120e-07\nweird rows saved=0"
+    }
+  ],
   "failed": [
     {
       "eq_id": "closest_lt_distance",
@@ -64,13 +72,6 @@
     {
       "eq_id": "separable_vs_entangled_lt",
       "error": "Missing config in EXPERIMENT_CONFIGS"
-    },
-    {
-      "eq_id": "local_gp_closure_test",
-      "dA": 2,
-      "dAp": 2,
-      "error": "name 'J' is not defined",
-      "traceback": "Traceback (most recent call last):\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\run_all_exp.py\", line 213, in main\n    result = backend_run(config, system, analyzer)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\backend.py\", line 83, in backend_run\n    res = dispatch_experiment(eq_id, vars_dict, system, analyzer, run_dir)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\experiments_ext.py\", line 691, in dispatch_experiment\n    return table[eq_id](vars_dict, system, analyzer, run_dir)\n  File \"F:\\Abeli\\Documents\\Github\\Capstone SDP\\SDP\\ltgp\\experiments_ext.py\", line 570, in exp_local_gp_closure_test\n    out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)\nNameError: name 'J' is not defined\n"
     },
     {
       "eq_id": "verified_local_edge_audit",

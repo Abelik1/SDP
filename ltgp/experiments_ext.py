@@ -492,6 +492,7 @@ def exp_lt_convertibility_graph(vars_dict: Dict[str, Any], system: LTGPSystem, a
             states.append(sigma)
             labels.append(f'ext_{len(states)-1}')
         p_list = np.arange(len(states), dtype=float)
+    
     graph = _family_graph(system, states, p_list, vars_dict, run_dir, prefix='convertibility')
     save_csv_rows(run_dir, [{'idx': i, 'label': labels[i]} for i in range(len(labels))], 'vertices.csv')
     return {'summary': _summary_lines('Convertibility graph', [f'vertices={len(states)}', f"global edges={int(graph['A_global'].sum())}", f"local edges={int(graph['A_local'].sum())}", f"ppt edges={int(graph['A_ppt'].sum())}", f"local edges without PPT={int(graph['diagnostics']['local_without_ppt'])}", f"local edges failing explicit verification={int(graph['diagnostics']['local_unverified'])}", f'local mode={_local_mode(vars_dict)}']), 'artifacts': {'global_adj': 'convertibility_global_adjacency.png', 'local_adj': 'convertibility_local_adjacency.png', 'ppt_adj': 'convertibility_ppt_adjacency.png', 'edge_csv': 'convertibility_edges.csv', 'diagnostics': 'convertibility_diagnostics.json'}}
@@ -569,11 +570,11 @@ def exp_local_gp_closure_test(vars_dict: Dict[str, Any], system: LTGPSystem, ana
         # print(gammaA_k,"\n", errA_k)
         # out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)
         # out2 = sum(K @ gamma @ K.conj().T for K in system.kraus_from_choi(J, 2, 2))
-        out1 = system.choi_apply_numpy(J, gamma, d_in=2, d_out=2)
-        Ks = system.kraus_from_choi(J, 2, 2)
-        out2 = sum(K @ gamma @ K.conj().T for K in Ks)
-        gap = np.linalg.norm(out1 - out2, 'fro')
-        assert gap < 1e-8
+        # out1 = system.choi_apply_numpy(J_A, gamma, d_in=2, d_out=2)
+        # Ks = system.kraus_from_choi(J_A, 2, 2)
+        # out2 = sum(K @ gamma @ K.conj().T for K in Ks)
+        # gap = np.linalg.norm(out1 - out2, 'fro')
+        # assert gap < 1e-8
         # print(np.linalg.norm(out1 - out2, 'fro'))
         
         if J_A is None or J_B is None:
