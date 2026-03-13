@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "csv": "ray_XX_family.csv",
+    "entanglement_figure": "ray_XX_entanglement.png",
+    "norms_figure": "ray_XX_correlation_norms.png",
+    "resources_figure": "ray_XX_resources.png"
+  },
+  "diagnostics": {},
+  "eq_id": "lt_family_ray_validation",
+  "eq_name": "lt_family_ray_validation",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "include_negative": true,
+    "label": "XX",
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 3,
+    "num_samples": 40,
+    "reset_system": true,
+    "seed": 12352,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260312-211312_lt_family_ray_validation_ae16a9eecd",
+  "summary": "LT Pauli ray XX\n\np_bounds=(-0.7864477329659272, 0.7864477329659272)\nsamples=3\nenergy-diagonal points=1\nNPT-entangled points (PT negativity > 0)=0\nglobal edges=4\nlocal edges=4\nppt edges=1\nglobal monotone violations=0\nlocal edges without PPT=3\nlocal edges failing explicit verification=0\nmonotone violations among global edges=0",
+  "summary_text": "Run metadata\n\neq_id=lt_family_ray_validation\neq_name=lt_family_ray_validation\nrun_dir=results\\20260312-211312_lt_family_ray_validation_ae16a9eecd\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=40\nseed=12352\nlocal_edge_mode=verified\nn_random_starts=8\n\nLT Pauli ray XX\n\np_bounds=(-0.7864477329659272, 0.7864477329659272)\nsamples=3\nenergy-diagonal points=1\nNPT-entangled points (PT negativity > 0)=0\nglobal edges=4\nlocal edges=4\nppt edges=1\nglobal monotone violations=0\nlocal edges without PPT=3\nlocal edges failing explicit verification=0\nmonotone violations among global edges=0\n",
+  "warnings": []
+}

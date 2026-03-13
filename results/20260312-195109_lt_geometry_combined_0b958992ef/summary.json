@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "figure": "lt_geometry_combined.png"
+  },
+  "diagnostics": {},
+  "eq_id": "lt_geometry_combined",
+  "eq_name": "lt_geometry_combined",
+  "parsed_variables": {
+    "beta": 1.0,
+    "classical": false,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 200,
+    "reset_system": true,
+    "seed": 12349,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260312-195109_lt_geometry_combined_0b958992ef",
+  "summary": "LT geometry combined\n\nboundary points=200\ninterior points=200",
+  "summary_text": "Run metadata\n\neq_id=lt_geometry_combined\neq_name=lt_geometry_combined\nrun_dir=results\\20260312-195109_lt_geometry_combined_0b958992ef\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=200\nseed=12349\nlocal_edge_mode=verified\nn_random_starts=8\n\nLT geometry combined\n\nboundary points=200\ninterior points=200\n",
+  "warnings": []
+}

@@ -5,11 +5,11 @@
   "failed_count": 16,
   "completed": [
     {
-      "eq_id": "local_gp_closure_test",
+      "eq_id": "separable_vs_entangled_lt",
       "dA": 2,
       "dAp": 2,
-      "run_dir": "results\\20260308-223551_local_gp_closure_test_e54f7048e7",
-      "summary": "LT closure under random local GP channels\n\ntests=30\nconstructed channels=30\npass fraction=1.000\nmax product-method gap=0.000e+00\nmax marginal error A=1.802e-07\nmax marginal error A'=2.120e-07\nweird rows saved=0"
+      "run_dir": "results\\20260312-201230_separable_vs_entangled_lt_cb03f25950",
+      "summary": "PPT / separability in LT\n\nsamples=80\nPPT fraction=0.113"
     }
   ],
   "failed": [
@@ -70,7 +70,7 @@
       "error": "Missing config in EXPERIMENT_CONFIGS"
     },
     {
-      "eq_id": "separable_vs_entangled_lt",
+      "eq_id": "local_gp_closure_test",
       "error": "Missing config in EXPERIMENT_CONFIGS"
     },
     {

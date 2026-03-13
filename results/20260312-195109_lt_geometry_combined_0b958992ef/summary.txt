@@ -1,0 +1,21 @@
+Run metadata
+
+eq_id=lt_geometry_combined
+eq_name=lt_geometry_combined
+run_dir=results\20260312-195109_lt_geometry_combined_0b958992ef
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=200
+seed=12349
+local_edge_mode=verified
+n_random_starts=8
+
+LT geometry combined
+
+boundary points=200
+interior points=200

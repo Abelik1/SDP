@@ -103,11 +103,11 @@ EXPERIMENT_CONFIGS = {
     #     "seed": SEED0 + 15,
     #     "num_samples": 80,
     # },
-    "local_gp_closure_test": {
-        "dA": 2, "dAp": 2,
-        "seed": SEED0 + 16,
-        "num_samples": 200,
-    },
+    # "local_gp_closure_test": {
+    #     "dA": 2, "dAp": 2,
+    #     "seed": SEED0 + 16,
+    #     "num_samples": 200,
+    # },
     # "verified_local_edge_audit": {
     #     "dA": 2, "dAp": 2,
     #     "seed": SEED0 + 17,

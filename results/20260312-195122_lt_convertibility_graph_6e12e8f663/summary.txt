@@ -1,0 +1,26 @@
+Run metadata
+
+eq_id=lt_convertibility_graph
+eq_name=lt_convertibility_graph
+run_dir=results\20260312-195122_lt_convertibility_graph_6e12e8f663
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=8
+seed=12356
+local_edge_mode=verified
+n_random_starts=8
+
+Convertibility graph
+
+vertices=8
+global edges=6
+local edges=1
+ppt edges=2
+local edges without PPT=1
+local edges failing explicit verification=0
+local mode=verified

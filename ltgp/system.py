@@ -1996,14 +1996,50 @@ class LTGPSystem(LTSDPSystem):
         pt = self.partial_transpose_b(0.5 * (rho + rho.conj().T), self.dims)
         return np.real(np.linalg.eigvalsh(0.5 * (pt + pt.conj().T)))
 
+    def pt_negativity(self, rho: np.ndarray, tol: float = 1e-10) -> float:
+        r"""
+        Standard PPT-negativity:
+            N(
+ho) = \sum_{\lambda_k < 0} |\lambda_k(
+ho^{T_B})|
+                    = (\|
+ho^{T_B}\|_1 - 1) / 2.
+        For 2x2 and 2x3 this is a direct entanglement witness: N>0 iff the state is entangled.
+        """
+        ev = self.ppt_spectrum(rho)
+        neg = ev[ev < -tol]
+        if neg.size == 0:
+            return 0.0
+        return float(np.sum(-neg))
+
+    def log_negativity(self, rho: np.ndarray, tol: float = 1e-10) -> float:
+        neg = self.pt_negativity(rho, tol=tol)
+        return float(np.log2(1.0 + 2.0 * neg))
+
     def ppt_status(self, rho: np.ndarray, tol: float = 1e-10) -> dict:
         ev = self.ppt_spectrum(rho)
         min_ev = float(np.min(ev))
+        neg = ev[ev < -tol]
+        negativity = float(np.sum(-neg)) if neg.size else 0.0
+        log_negativity = float(np.log2(1.0 + 2.0 * negativity))
         is_ppt = bool(min_ev >= -tol)
         sep_cert = None
+        entanglement_class = 'unknown'
         if self.dims in ((2, 2), (2, 3), (3, 2)):
             sep_cert = is_ppt
-        return {'is_ppt': is_ppt, 'min_pt_eig': min_ev, 'separable_if_low_dim': sep_cert}
+            entanglement_class = 'separable' if is_ppt else 'npt_entangled'
+        else:
+            entanglement_class = 'ppt_or_bound_entanglement_candidate' if is_ppt else 'npt_entangled'
+        return {
+            'is_ppt': is_ppt,
+            'min_pt_eig': min_ev,
+            'pt_negativity': negativity,
+            'log_negativity': log_negativity,
+            'num_negative_pt_eigs': int(neg.size),
+            'negative_pt_eig_sum': negativity,
+            'separable_if_low_dim': sep_cert,
+            'entanglement_class': entanglement_class,
+        }
 
 
 def default_hamiltonian(d: int, scale: float = 1.0) -> np.ndarray:
@@ -2209,17 +2245,34 @@ class LTAnalyzer:
         CF = []
         T_svals = []
         ppt_min = []
+        pt_neg = []
+        log_neg = []
+        ent_class = []
         for rho in states:
             Dk, Ik, _, _ = self.system.monotones(rho, tol=1e-12)
             cm = self.system.correlation_metrics(rho, tol=1e-12)
+            ppt = self.system.ppt_status(rho)
             D.append(float(Dk)); I.append(float(Ik)); C1.append(float(cm['C_trace_dist'])); CF.append(float(cm['C_fro']))
             if self.system.dims == (2, 2):
                 sv = np.linalg.svd(self.system.qubit_correlation_tensor_T(rho), compute_uv=False)
                 T_svals.append(np.sort(np.real(sv))[::-1])
             else:
                 T_svals.append(None)
-            ppt_min.append(float(self.system.ppt_status(rho)['min_pt_eig']))
-        return {'D': D, 'I': I, 'C_trace_dist': C1, 'C_fro': CF, 'T_svals': T_svals, 'ppt_min_eig': ppt_min}
+            ppt_min.append(float(ppt['min_pt_eig']))
+            pt_neg.append(float(ppt['pt_negativity']))
+            log_neg.append(float(ppt['log_negativity']))
+            ent_class.append(str(ppt['entanglement_class']))
+        return {
+            'D': D,
+            'I': I,
+            'C_trace_dist': C1,
+            'C_fro': CF,
+            'T_svals': T_svals,
+            'ppt_min_eig': ppt_min,
+            'pt_negativity': pt_neg,
+            'log_negativity': log_neg,
+            'entanglement_class': ent_class,
+        }
 
 
 def build_system_and_analyzer(

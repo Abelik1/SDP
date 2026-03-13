@@ -37,6 +37,11 @@ def count_true(values):
             pass
     return total
 
+
+def _count_true(rows: list[dict], key: str) -> int:
+    return sum(int(bool(row.get(key))) for row in rows)
+
+
 def _local_mode(vars_dict: Dict[str, Any]) -> str:
     return str(vars_dict.get('local_edge_mode', 'verified')).strip().lower()
 
@@ -45,8 +50,64 @@ def _summary_lines(title: str, lines: List[str]) -> str:
     return title + "\n\n" + "\n".join(lines)
 
 
+def _projection_axis_labels(system: LTGPSystem) -> tuple[str, str, str]:
+    if system.dims == (2, 2):
+        return (
+            r'$\mathrm{Tr}[C\,(\sigma_x\otimes\sigma_x)]$',
+            r'$\mathrm{Tr}[C\,(\sigma_y\otimes\sigma_y)]$',
+            r'$\mathrm{Tr}[C\,(\sigma_z\otimes\sigma_z)]$',
+        )
+    return ('random LT projection 1', 'random LT projection 2', 'random LT projection 3')
 
-def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarray, vars_dict: Dict[str, Any], run_dir: str, prefix: str) -> Dict[str, Any]:
+
+def _pretty_state_ticks(values: np.ndarray | None = None, labels: list[str] | None = None) -> list[str] | None:
+    if labels is not None:
+        return [str(x) for x in labels]
+    if values is None:
+        return None
+    return [f'{float(v):.3g}' for v in values]
+
+
+def _plot_binary_adjacency(
+    A: np.ndarray,
+    *,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    xticklabels: list[str] | None = None,
+    yticklabels: list[str] | None = None,
+):
+    fig, ax = plt.subplots(figsize=(6.8, 5.8))
+    im = ax.imshow(A, interpolation='nearest', vmin=0, vmax=1, cmap='viridis')
+    cbar = fig.colorbar(im, ax=ax, ticks=[0, 1])
+    cbar.ax.set_yticklabels(['infeasible', 'feasible'])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title + '\nentry (i,j)=1 iff source i can be mapped to target j')
+    n_rows, n_cols = A.shape
+    ax.set_xticks(np.arange(n_cols))
+    ax.set_yticks(np.arange(n_rows))
+    if xticklabels is not None:
+        ax.set_xticklabels(xticklabels, rotation=45, ha='right', fontsize=8)
+    if yticklabels is not None:
+        ax.set_yticklabels(yticklabels, fontsize=8)
+    ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n_rows, 1), minor=True)
+    ax.grid(which='minor', color='white', linestyle='-', linewidth=0.4, alpha=0.35)
+    ax.tick_params(which='minor', bottom=False, left=False)
+    fig.tight_layout()
+    return fig
+
+
+def _family_graph(
+    system: LTGPSystem,
+    states: list[np.ndarray],
+    p_list: np.ndarray,
+    vars_dict: Dict[str, Any],
+    run_dir: str,
+    prefix: str,
+    state_labels: list[str] | None = None,
+) -> Dict[str, Any]:
     local_mode = _local_mode(vars_dict)
     n_random_starts = int(vars_dict.get('n_random_starts', 6))
     seed = int(vars_dict.get('seed', 0))
@@ -55,6 +116,7 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
     A_l = np.zeros((n, n), dtype=int)
     A_p = np.zeros((n, n), dtype=int)
     rows = []
+    ticklabels = _pretty_state_ticks(values=p_list, labels=state_labels)
 
     for i in range(n):
         for j in range(n):
@@ -124,6 +186,8 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
             D_j, I_j, _, _ = system.monotones(tau_p)
             cm_i = system.correlation_metrics(tau)
             cm_j = system.correlation_metrics(tau_p)
+            ppt_i = system.ppt_status(tau)
+            ppt_j = system.ppt_status(tau_p)
 
             # local details may come back nested under 'best' for multistart
             l_best = (l_det or {}).get('best', l_det or {}) if isinstance(l_det, dict) else {}
@@ -139,6 +203,8 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
             row = {
                 'source': i,
                 'target': j,
+                'source_label': None if ticklabels is None else str(ticklabels[i]),
+                'target_label': None if ticklabels is None else str(ticklabels[j]),
                 'p_source': float(p_list[i]),
                 'p_target': float(p_list[j]),
                 'D_source': float(D_i),
@@ -147,6 +213,12 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
                 'I_target': float(I_j),
                 'C1_source': float(cm_i['C_trace_dist']),
                 'C1_target': float(cm_j['C_trace_dist']),
+                'CF_source': float(cm_i['C_fro']),
+                'CF_target': float(cm_j['C_fro']),
+                'pt_negativity_source': float(ppt_i['pt_negativity']),
+                'pt_negativity_target': float(ppt_j['pt_negativity']),
+                'min_pt_eig_source': float(ppt_i['min_pt_eig']),
+                'min_pt_eig_target': float(ppt_j['min_pt_eig']),
                 'global_edge': int(A_g[i, j]),
                 'local_edge': int(A_l[i, j]),
                 'ppt_edge': int(A_p[i, j]),
@@ -181,13 +253,22 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
     save_csv_rows(run_dir, [r for r in rows if r['local_without_ppt']], f'{prefix}_local_without_ppt.csv')
     save_csv_rows(run_dir, [r for r in rows if r['local_unverified']], f'{prefix}_local_unverified.csv')
 
-    for tag, A in [('global', A_g), ('local', A_l), ('ppt', A_p)]:
-        fig = plt.figure()
-        plt.imshow(A, interpolation='nearest')
-        plt.colorbar()
-        plt.xlabel('target')
-        plt.ylabel('source')
-        plt.title(f'{prefix}: {tag} adjacency')
+    heatmap_specs = [
+        ('global', A_g, 'Global GP directed convertibility map'),
+        ('local', A_l, f'Local GP directed convertibility map ({local_mode})'),
+        ('ppt', A_p, 'PPT-outer directed convertibility map'),
+    ]
+    xlab = 'target state label / parameter'
+    ylab = 'source state label / parameter'
+    for tag, A, title in heatmap_specs:
+        fig = _plot_binary_adjacency(
+            A,
+            title=f'{prefix}: {title}',
+            xlabel=xlab,
+            ylabel=ylab,
+            xticklabels=ticklabels,
+            yticklabels=ticklabels,
+        )
         save_fig(run_dir, fig, f'{prefix}_{tag}_adjacency.png')
         plt.close(fig)
 
@@ -200,7 +281,14 @@ def _family_graph(system: LTGPSystem, states: list[np.ndarray], p_list: np.ndarr
         'local_unverified': _count_true(rows, 'local_unverified'),
     }
     write_json(run_dir, diagnostics, filename=f'{prefix}_diagnostics.json')
-    return {'A_global': A_g, 'A_local': A_l, 'A_ppt': A_p, 'rows': rows, 'diagnostics': diagnostics}
+    return {
+        'A_global': A_g,
+        'A_local': A_l,
+        'A_ppt': A_p,
+        'rows': rows,
+        'diagnostics': diagnostics,
+        'ticklabels': ticklabels,
+    }
 
 
 def exp_closest_lt_distance(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str) -> Dict[str, Any]:
@@ -226,13 +314,14 @@ def exp_lt_region_geometry(vars_dict: Dict[str, Any], system: LTGPSystem, analyz
         mon = item['monotones']
         rows.append({'idx': k, 'opt_val': float(item['opt_val']), 'I': float(mon['I_rho']), 'D': float(mon['D_rho_vs_gamma'])})
     save_csv_rows(run_dir, rows, 'boundary_points.csv')
+    xlabel, ylabel, zlabel = _projection_axis_labels(system)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=18)
     ax.set_title('LT boundary samples')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_zlabel(zlabel)
     save_fig(run_dir, fig, 'lt_boundary_3d.png')
     plt.close(fig)
     return {'summary': _summary_lines('LT boundary geometry', [f'samples={len(extremals)}', f'classical={classical}']), 'artifacts': {'points': 'boundary_points.npy', 'figure': 'lt_boundary_3d.png'}}
@@ -255,13 +344,14 @@ def exp_lt_interior_geometry(vars_dict: Dict[str, Any], system: LTGPSystem, anal
     pts = np.array(pts, dtype=float)
     save_npy(run_dir, pts, 'interior_points.npy')
     save_csv_rows(run_dir, rows, 'interior_points.csv')
+    xlabel, ylabel, zlabel = _projection_axis_labels(system)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=18)
     ax.set_title('Projected LT interior cloud')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_zlabel(zlabel)
     save_fig(run_dir, fig, 'lt_interior_3d.png')
     plt.close(fig)
     return {'summary': _summary_lines('LT interior geometry', [f'samples={len(rows)}']), 'artifacts': {'points': 'interior_points.npy', 'figure': 'lt_interior_3d.png'}}
@@ -272,6 +362,7 @@ def exp_lt_geometry_combined(vars_dict: Dict[str, Any], system: LTGPSystem, anal
     exp_lt_interior_geometry(vars_dict, system, analyzer, run_dir)
     boundary = np.load(f'{run_dir}/boundary_points.npy')
     interior = np.load(f'{run_dir}/interior_points.npy')
+    xlabel, ylabel, zlabel = _projection_axis_labels(system)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     if len(interior):
@@ -280,6 +371,9 @@ def exp_lt_geometry_combined(vars_dict: Dict[str, Any], system: LTGPSystem, anal
         ax.scatter(boundary[:, 0], boundary[:, 1], boundary[:, 2], s=24, label='boundary')
     ax.legend()
     ax.set_title('LT geometry: boundary + interior')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_zlabel(zlabel)
     save_fig(run_dir, fig, 'lt_geometry_combined.png')
     plt.close(fig)
     return {'summary': _summary_lines('LT geometry combined', [f'boundary points={len(boundary)}', f'interior points={len(interior)}']), 'artifacts': {'figure': 'lt_geometry_combined.png'}}
@@ -325,8 +419,8 @@ def exp_mix_with_gamma(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: 
 
 
 def _exp_family_common(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: LTAnalyzer, run_dir: str, family_kind: str) -> Dict[str, Any]:
-    num_points = int(vars_dict.get('num_points', vars_dict.get('num_samples', 17)))
-    include_negative = _bool(vars_dict.get('include_negative', False))
+    num_points = int(vars_dict.get('num_points', 17))
+    include_negative = _bool(vars_dict.get('include_negative', True))
     if family_kind == 'ray':
         label = str(vars_dict.get('label', 'XX'))
         fam = analyzer.scan_lt_ray_family_pauli(label=label, num_points=num_points, include_negative=include_negative)
@@ -341,40 +435,86 @@ def _exp_family_common(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: 
         title = f'LT diagonal-T ray ({tx:g},{ty:g},{tz:g})'
     p_list = np.array(fam['p_list'], dtype=float)
     obs = analyzer.compute_family_observables(fam['states'])
+    ticklabels = [f'{float(p):.3g}' for p in p_list]
     rows = []
     for i, p in enumerate(p_list):
-        row = {'idx': i, 'p': float(p), 'D': float(obs['D'][i]), 'I': float(obs['I'][i]), 'C1': float(obs['C_trace_dist'][i]), 'CF': float(obs['C_fro'][i]), 'ppt_min_eig': float(obs['ppt_min_eig'][i])}
+        row = {
+            'idx': i,
+            'p': float(p),
+            'label': ticklabels[i],
+            'D': float(obs['D'][i]),
+            'I': float(obs['I'][i]),
+            'C1': float(obs['C_trace_dist'][i]),
+            'CF': float(obs['C_fro'][i]),
+            'ppt_min_eig': float(obs['ppt_min_eig'][i]),
+            'pt_negativity': float(obs['pt_negativity'][i]),
+            'log_negativity': float(obs['log_negativity'][i]),
+            'entanglement_class': str(obs['entanglement_class'][i]),
+            'is_energy_diagonal': int(bool(system.is_energy_diagonal(fam['states'][i]))),
+        }
         svals = obs['T_svals'][i]
         if svals is not None:
             row.update({'s1': float(svals[0]), 's2': float(svals[1]), 's3': float(svals[2])})
         rows.append(row)
     save_csv_rows(run_dir, rows, f'{prefix}_family.csv')
-    fig = plt.figure()
-    plt.plot(p_list, obs['I'], marker='o')
-    plt.xlabel('p')
-    plt.ylabel('I(A:B)')
-    plt.title(f'{title} — mutual information')
-    save_fig(run_dir, fig, f'{prefix}_I.png')
+
+    # Figure 1: LT resource identity on the ray
+    fig, ax = plt.subplots(figsize=(7.0, 4.6))
+    ax.plot(p_list, obs['I'], marker='o', label='I(A:B)')
+    ax.plot(p_list, obs['D'], marker='s', linestyle='--', label='D(ρ||Γ)')
+    if np.min(p_list) < 0.0 < np.max(p_list):
+        ax.axvline(0.0, color='k', linestyle=':', linewidth=1.0, label='Γ at p=0')
+    ax.set_xlabel(r'ray parameter $p$ in $\rho(p)=\Gamma + p C_0$')
+    ax.set_ylabel('resource value')
+    ax.set_title(f'{title} — LT resource profile')
+    ax.legend()
+    fig.tight_layout()
+    save_fig(run_dir, fig, f'{prefix}_resources.png')
     plt.close(fig)
-    fig = plt.figure()
-    plt.plot(p_list, obs['D'], marker='o', label='D')
-    plt.plot(p_list, obs['C_trace_dist'], marker='s', label='0.5||C||1')
-    plt.plot(p_list, obs['C_fro'], marker='^', label='||C||F')
-    plt.xlabel('p')
-    plt.legend()
-    plt.title(f'{title} — monotones / norms')
-    save_fig(run_dir, fig, f'{prefix}_monotones.png')
+
+    # Figure 2: correlation norms relative to the product Gibbs state
+    fig, ax = plt.subplots(figsize=(7.0, 4.6))
+    ax.plot(p_list, obs['C_trace_dist'], marker='s', label=r'$\frac{1}{2}\|C\|_1$ with $C=\rho-\Gamma$')
+    ax.plot(p_list, obs['C_fro'], marker='^', label=r'$\|C\|_F$ with $C=\rho-\Gamma$')
+    if np.min(p_list) < 0.0 < np.max(p_list):
+        ax.axvline(0.0, color='k', linestyle=':', linewidth=1.0, label='Γ at p=0')
+    ax.set_xlabel(r'ray parameter $p$ in $\rho(p)=\Gamma + p C_0$')
+    ax.set_ylabel('correlation norm')
+    ax.set_title(f'{title} — correlation strength relative to Γ')
+    ax.legend()
+    fig.tight_layout()
+    save_fig(run_dir, fig, f'{prefix}_correlation_norms.png')
     plt.close(fig)
-    graph = _family_graph(system, fam['states'], p_list, vars_dict, run_dir, prefix=prefix)
+
+    # Figure 3: entanglement/PPT diagnostics along the ray
+    fig, ax = plt.subplots(figsize=(7.0, 4.6))
+    ax.plot(p_list, obs['pt_negativity'], marker='o', label=r'PT negativity $\mathcal{N}(\rho)$')
+    ax.plot(p_list, obs['ppt_min_eig'], marker='s', label=r'$\lambda_{\min}(\rho^{T_B})$')
+    ax.axhline(0.0, color='k', linestyle='--', linewidth=1.0)
+    if np.min(p_list) < 0.0 < np.max(p_list):
+        ax.axvline(0.0, color='k', linestyle=':', linewidth=1.0, label='Γ at p=0')
+    ax.set_xlabel(r'ray parameter $p$ in $\rho(p)=\Gamma + p C_0$')
+    ax.set_ylabel('entanglement / PPT diagnostic')
+    ax.set_title(f'{title} — partial-transpose diagnostics')
+    ax.legend()
+    fig.tight_layout()
+    save_fig(run_dir, fig, f'{prefix}_entanglement.png')
+    plt.close(fig)
+
+    graph = _family_graph(system, fam['states'], p_list, vars_dict, run_dir, prefix=prefix, state_labels=ticklabels)
     monotone_violations = [
         r for r in graph['rows']
         if r['global_edge'] and (r['D_target'] > r['D_source'] + 1e-8 or r['I_target'] > r['I_source'] + 1e-8)
     ]
     save_csv_rows(run_dir, monotone_violations, f'{prefix}_monotone_violations.csv')
+    n_entangled = int(sum(r['pt_negativity'] > 1e-10 for r in rows))
+    n_classical = int(sum(r['is_energy_diagonal'] for r in rows))
     return {
         'summary': _summary_lines(title, [
             f"p_bounds={fam['p_bounds']}",
             f'samples={len(p_list)}',
+            f'energy-diagonal points={n_classical}',
+            f'NPT-entangled points (PT negativity > 0)={n_entangled}',
             f"global edges={int(graph['A_global'].sum())}",
             f"local edges={int(graph['A_local'].sum())}",
             f"ppt edges={int(graph['A_ppt'].sum())}",
@@ -383,7 +523,12 @@ def _exp_family_common(vars_dict: Dict[str, Any], system: LTGPSystem, analyzer: 
             f"local edges failing explicit verification={int(graph['diagnostics']['local_unverified'])}",
             f'monotone violations among global edges={len(monotone_violations)}',
         ]),
-        'artifacts': {'csv': f'{prefix}_family.csv', 'figure': f'{prefix}_monotones.png'},
+        'artifacts': {
+            'csv': f'{prefix}_family.csv',
+            'resources_figure': f'{prefix}_resources.png',
+            'norms_figure': f'{prefix}_correlation_norms.png',
+            'entanglement_figure': f'{prefix}_entanglement.png',
+        },
     }
 
 
@@ -493,7 +638,7 @@ def exp_lt_convertibility_graph(vars_dict: Dict[str, Any], system: LTGPSystem, a
             labels.append(f'ext_{len(states)-1}')
         p_list = np.arange(len(states), dtype=float)
     
-    graph = _family_graph(system, states, p_list, vars_dict, run_dir, prefix='convertibility')
+    graph = _family_graph(system, states, p_list, vars_dict, run_dir, prefix='convertibility', state_labels=labels)
     save_csv_rows(run_dir, [{'idx': i, 'label': labels[i]} for i in range(len(labels))], 'vertices.csv')
     return {'summary': _summary_lines('Convertibility graph', [f'vertices={len(states)}', f"global edges={int(graph['A_global'].sum())}", f"local edges={int(graph['A_local'].sum())}", f"ppt edges={int(graph['A_ppt'].sum())}", f"local edges without PPT={int(graph['diagnostics']['local_without_ppt'])}", f"local edges failing explicit verification={int(graph['diagnostics']['local_unverified'])}", f'local mode={_local_mode(vars_dict)}']), 'artifacts': {'global_adj': 'convertibility_global_adjacency.png', 'local_adj': 'convertibility_local_adjacency.png', 'ppt_adj': 'convertibility_ppt_adjacency.png', 'edge_csv': 'convertibility_edges.csv', 'diagnostics': 'convertibility_diagnostics.json'}}
 
@@ -529,17 +674,46 @@ def exp_separable_vs_entangled_lt(vars_dict: Dict[str, Any], system: LTGPSystem,
         sigma = system.closest_lt_state(rho, classical=False, solver=system.solver_default, tol=system.tol_default, verbose=False)[0]
         ppt = system.ppt_status(sigma)
         D, I, _, _ = system.monotones(sigma)
-        rows.append({'idx': k, 'D': float(D), 'I': float(I), 'is_ppt': int(bool(ppt['is_ppt'])), 'min_pt_eig': float(ppt['min_pt_eig']), 'separable_if_low_dim': ppt['separable_if_low_dim']})
+        rows.append({
+            'idx': k,
+            'D': float(D),
+            'I': float(I),
+            'is_ppt': int(bool(ppt['is_ppt'])),
+            'min_pt_eig': float(ppt['min_pt_eig']),
+            'pt_negativity': float(ppt['pt_negativity']),
+            'log_negativity': float(ppt['log_negativity']),
+            'entanglement_class': str(ppt['entanglement_class']),
+            'separable_if_low_dim': ppt['separable_if_low_dim'],
+        })
     save_csv_rows(run_dir, rows, 'lt_ppt_classification.csv')
-    fig = plt.figure()
-    plt.scatter([r['D'] for r in rows], [r['I'] for r in rows], c=[r['is_ppt'] for r in rows])
-    plt.xlabel('D')
-    plt.ylabel('I')
-    plt.title('LT samples: PPT classification')
+    fig, ax = plt.subplots(figsize=(6.6, 4.8))
+    colors = ['tab:blue' if r['is_ppt'] else 'tab:red' for r in rows]
+    ax.scatter([r['D'] for r in rows], [r['I'] for r in rows], c=colors, alpha=0.8)
+    if rows:
+        vmax = max(max(r['D'] for r in rows), max(r['I'] for r in rows))
+        ax.plot([0.0, vmax], [0.0, vmax], linestyle='--', color='k', linewidth=1.0, label='D = I on LT')
+    ax.set_xlabel(r'relative entropy $D(\rho\|\Gamma)$')
+    ax.set_ylabel(r'mutual information $I(A:B)$')
+    ax.set_title('LT samples: PPT / entanglement classification')
+    ax.legend()
+    fig.tight_layout()
     save_fig(run_dir, fig, 'lt_ppt_classification.png')
     plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6.6, 4.8))
+    ax.scatter([r['I'] for r in rows], [r['pt_negativity'] for r in rows], c=colors, alpha=0.8)
+    ax.set_xlabel(r'mutual information $I(A:B)$')
+    ax.set_ylabel(r'PT negativity $\mathcal{N}(\rho)$')
+    ax.set_title('LT samples: entanglement strength vs correlation')
+    fig.tight_layout()
+    save_fig(run_dir, fig, 'lt_pt_negativity_vs_I.png')
+    plt.close(fig)
+
     ppt_fraction = float(np.mean([r['is_ppt'] for r in rows])) if rows else 0.0
-    return {'summary': _summary_lines('PPT / separability in LT', [f'samples={n}', f'PPT fraction={ppt_fraction:.3f}']), 'artifacts': {'csv': 'lt_ppt_classification.csv', 'figure': 'lt_ppt_classification.png'}}
+    return {
+        'summary': _summary_lines('PPT / separability in LT', [f'samples={n}', f'PPT fraction={ppt_fraction:.3f}']),
+        'artifacts': {'csv': 'lt_ppt_classification.csv', 'figure': 'lt_ppt_classification.png', 'negativity_figure': 'lt_pt_negativity_vs_I.png'},
+    }
 
 
 

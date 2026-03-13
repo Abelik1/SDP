@@ -1,0 +1,30 @@
+Run metadata
+
+eq_id=lt_family_ray_validation
+eq_name=lt_family_ray_validation
+run_dir=results\20260312-211312_lt_family_ray_validation_ae16a9eecd
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12352
+local_edge_mode=verified
+n_random_starts=8
+
+LT Pauli ray XX
+
+p_bounds=(-0.7864477329659272, 0.7864477329659272)
+samples=3
+energy-diagonal points=1
+NPT-entangled points (PT negativity > 0)=0
+global edges=4
+local edges=4
+ppt edges=1
+global monotone violations=0
+local edges without PPT=3
+local edges failing explicit verification=0
+monotone violations among global edges=0

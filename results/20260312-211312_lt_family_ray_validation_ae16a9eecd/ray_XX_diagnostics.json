@@ -1,0 +1,8 @@
+{
+  "global_edges": 4,
+  "global_monotone_violations": 0,
+  "local_edges": 4,
+  "local_unverified": 0,
+  "local_without_ppt": 3,
+  "ppt_edges": 1
+}

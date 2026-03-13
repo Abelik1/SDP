@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "csv": "lt_ppt_classification.csv",
+    "figure": "lt_ppt_classification.png",
+    "negativity_figure": "lt_pt_negativity_vs_I.png"
+  },
+  "diagnostics": {},
+  "eq_id": "separable_vs_entangled_lt",
+  "eq_name": "separable_vs_entangled_lt",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 80,
+    "reset_system": true,
+    "seed": 12360,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260312-201230_separable_vs_entangled_lt_cb03f25950",
+  "summary": "PPT / separability in LT\n\nsamples=80\nPPT fraction=0.113",
+  "summary_text": "Run metadata\n\neq_id=separable_vs_entangled_lt\neq_name=separable_vs_entangled_lt\nrun_dir=results\\20260312-201230_separable_vs_entangled_lt_cb03f25950\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=80\nseed=12360\nlocal_edge_mode=verified\nn_random_starts=8\n\nPPT / separability in LT\n\nsamples=80\nPPT fraction=0.113\n",
+  "warnings": []
+}

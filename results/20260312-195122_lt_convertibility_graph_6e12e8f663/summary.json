@@ -1,0 +1,34 @@
+{
+  "artifacts": {
+    "diagnostics": "convertibility_diagnostics.json",
+    "edge_csv": "convertibility_edges.csv",
+    "global_adj": "convertibility_global_adjacency.png",
+    "local_adj": "convertibility_local_adjacency.png",
+    "ppt_adj": "convertibility_ppt_adjacency.png"
+  },
+  "diagnostics": {},
+  "eq_id": "lt_convertibility_graph",
+  "eq_name": "lt_convertibility_graph",
+  "parsed_variables": {
+    "beta": 1.0,
+    "dA": 2,
+    "dAp": 2,
+    "ensemble": "mixed",
+    "eps_eq_global": 1e-06,
+    "eps_eq_local": 1e-06,
+    "eps_gibbs": 1e-08,
+    "include_negative": true,
+    "local_edge_mode": "verified",
+    "n_random_starts": 8,
+    "num_points": 17,
+    "num_samples": 8,
+    "reset_system": true,
+    "seed": 12356,
+    "solver": "SCS",
+    "symmetric": true
+  },
+  "run_dir": "results\\20260312-195122_lt_convertibility_graph_6e12e8f663",
+  "summary": "Convertibility graph\n\nvertices=8\nglobal edges=6\nlocal edges=1\nppt edges=2\nlocal edges without PPT=1\nlocal edges failing explicit verification=0\nlocal mode=verified",
+  "summary_text": "Run metadata\n\neq_id=lt_convertibility_graph\neq_name=lt_convertibility_graph\nrun_dir=results\\20260312-195122_lt_convertibility_graph_6e12e8f663\ndA=2\ndAp=2\nbeta=1.0\nsolver=SCS\neps_eq_global=1e-06\neps_eq_local=1e-06\neps_gibbs=1e-08\nnum_samples=8\nseed=12356\nlocal_edge_mode=verified\nn_random_starts=8\n\nConvertibility graph\n\nvertices=8\nglobal edges=6\nlocal edges=1\nppt edges=2\nlocal edges without PPT=1\nlocal edges failing explicit verification=0\nlocal mode=verified\n",
+  "warnings": []
+}

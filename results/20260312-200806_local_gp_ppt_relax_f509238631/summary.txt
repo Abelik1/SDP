@@ -1,0 +1,23 @@
+Run metadata
+
+eq_id=local_gp_ppt_relax
+eq_name=local_gp_ppt_relax
+run_dir=results\20260312-200806_local_gp_ppt_relax_f509238631
+dA=2
+dAp=2
+beta=1.0
+solver=SCS
+eps_eq_global=1e-06
+eps_eq_local=1e-06
+eps_gibbs=1e-08
+num_samples=40
+seed=12357
+local_edge_mode=verified
+n_random_starts=8
+
+Local GP outer relaxation (PPT on joint Choi)
+
+PPT-relax feasible: False (status=infeasible)
+map_residual=inf, gibbs_residual=inf
+verified local feasible: False (status=multistart_best_only | optimal (residual=1.680e-01, threshold=1.000e-06))
+Interpretation: infeasible PPT ⇒ infeasible local GP; feasible PPT is only an outer bound.
